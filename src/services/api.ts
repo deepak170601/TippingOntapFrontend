@@ -12,11 +12,11 @@ interface ErrorResponse {
 }
 
 const request = async <T>(
-  method: string,
-  path: string,
-  body: RequestBody | null = null,
+  method:       string,
+  path:         string,
+  body:         RequestBody | null = null,
   requiresAuth: boolean = false,
-  isRetry: boolean = false,
+  isRetry:      boolean = false,
 ): Promise<T> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -30,18 +30,62 @@ const request = async <T>(
   const options: RequestInit = { method, headers };
   if (body) { options.body = JSON.stringify(body); }
 
-  const response = await fetch(`${BASE_URL}${path}`, options);
+  // ── Network errors (no internet, server down) ──────────────
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, options);
+  } catch {
+    throw new Error('Cannot reach server. Check your connection.');
+  }
 
+  // ── 401 refresh flow ───────────────────────────────────────
   if (response.status === 401 && requiresAuth && !isRetry) {
     const refreshed = await api.refresh();
     if (refreshed) { return request<T>(method, path, body, true, true); }
     throw new Error('SESSION_EXPIRED');
   }
 
-  const data = await response.json() as T & ErrorResponse;
-  if (!response.ok) { throw new Error(data.message ?? 'Request failed'); }
+  // ── Parse response — handle non-JSON safely ────────────────
+  let data: T & {
+    message?: string;
+    title?:   string;
+    errors?:  Record<string, string[]>;
+  };
+
+  try {
+    data = await response.json();
+  } catch {
+    // Response wasn't JSON (e.g. HTML 500 page)
+    throw new Error(`Server error (${response.status}). Please try again.`);
+  }
+
+  // ── Extract error message if request failed ────────────────
+  if (!response.ok) {
+    // Priority 1 — standard { message: "..." }
+    if (data.message) {
+      throw new Error(data.message);
+    }
+
+    // Priority 2 — ASP.NET Core validation errors
+    // { title: "...", errors: { Field: ["msg1", "msg2"] } }
+    if (data.errors) {
+      const firstField = Object.values(data.errors)[0];
+      const firstMsg   = Array.isArray(firstField) ? firstField[0] : null;
+      if (firstMsg) { throw new Error(firstMsg); }
+    }
+
+    // Priority 3 — ASP.NET title field
+    if (data.title) {
+      throw new Error(data.title);
+    }
+
+    // Fallback
+    throw new Error(`Request failed (${response.status})`);
+  }
+
   return data;
 };
+
 
 export interface AuthResponse {
   accessToken:  string;

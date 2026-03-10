@@ -4,7 +4,7 @@
 // TapScreen calls this — never touches stripe.ts or api.ts directly.
 // ─────────────────────────────────────────────────────────────
 import { useState, useCallback, useRef } from 'react';
-import stripeService from '../services/stripe';
+import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
 import api from '../services/api';
 
 // ── Payment states ─────────────────────────────────────────────
@@ -24,8 +24,8 @@ interface StartPaymentArgs {
 }
 
 interface PaymentResult {
-  success:         boolean;
-  error?:          string;
+  success:          boolean;
+  error?:           string;
   paymentIntentId?: string;
 }
 
@@ -35,14 +35,16 @@ interface PaymentResult {
 const MOCK_MODE = true;
 
 const usePayment = () => {
+  const stripeHooks = useStripeTerminal();
+
   const [paymentState, setPaymentState] = useState<PaymentState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const paymentIntentIdRef              = useRef<string | null>(null);
 
   // ── Mock payment — simulates full flow with delays ─────────────
   const runMockPayment = useCallback(async (): Promise<PaymentResult> => {
+    const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
-const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
     setPaymentState('discovering');
     await delay(900);
 
@@ -59,71 +61,102 @@ const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
     return { success: true, paymentIntentId: 'mock_pi_demo_123' };
   }, []);
 
-  // ── Real Stripe Terminal payment flow ──────────────────────────
-  const runRealPayment = useCallback(async (
-    { amountCents, eventId }: StartPaymentArgs,
-    stripeHooks: any,
-  ): Promise<PaymentResult> => {
-    setPaymentState('discovering');
-    setErrorMessage('');
+const runRealPayment = useCallback(async (
+  { amountCents, eventId }: StartPaymentArgs,
+): Promise<PaymentResult> => {
+  setPaymentState('discovering');
+  setErrorMessage('');
 
-    try {
-      // 1. Discover readers
-      await stripeService.discoverReaders(stripeHooks);
+  try {
+    // 1. Discover — correct method name is 'tapToPay' not 'localMobile'
+    await stripeHooks.discoverReaders({
+      discoveryMethod: 'tapToPay',
+      simulated: false,
+    });
 
-      // 2. Connect first discovered reader
-      setPaymentState('connecting');
-      const reader = stripeHooks.discoveredReaders?.[0];
-      if (!reader) { throw new Error('No reader found. Ensure device supports Tap to Pay.'); }
-      await stripeService.connectReader(stripeHooks, reader);
+    // 2. Connect — correct method is connectReader not connectLocalMobileReader
+    setPaymentState('connecting');
+    const reader = stripeHooks.discoveredReaders?.[0];
+    if (!reader) { throw new Error('No NFC reader found on this device.'); }
 
-      // 3. Create payment intent on backend
-      const intentData = await api.createPaymentIntent(amountCents, eventId);
-      paymentIntentIdRef.current = intentData.id;
+    const { reader: connected, error: connectError } =
+      await stripeHooks.connectReader({
+        reader,
+        locationId: 'your_stripe_location_id',
+        discoveryMethod: 'tapToPay'
+      });
+    if (connectError) { throw new Error(connectError.message); }
 
-      // 4. Collect payment method — user taps card here
-      setPaymentState('collecting');
-      const collected = await stripeService.collectPayment(
-        stripeHooks,
-        intentData.clientSecret,
-      );
+    // 3. Create PaymentIntent on backend
+    const intentData = await api.createPaymentIntent(amountCents, eventId);
+    paymentIntentIdRef.current = intentData.id;
 
-      // 5. Process (confirm) payment
-      setPaymentState('processing');
-      const processed = await stripeService.processPayment(stripeHooks, collected);
+    // 4. Collect — correct param is paymentIntent object not clientSecret string
+    // setPaymentState('collecting');
+    // const { paymentIntent: collected, error: collectError } =
+    //   await stripeHooks.collectPaymentMethod({
+    //     paymentIntent: {
+    //       id: intentData.id,
+    //       clientSecret: intentData.clientSecret,
+    //       amount: 0,
+    //       captureMethod: '',
+    //       charges: [],
+    //       created: '',
+    //       currency: '',
+    //       livemode: false,
+    //       sdkUuid: ''
+    //     },
+    //   });
+    // if (collectError) { throw new Error(collectError.message); }
 
-      // 6. Capture on backend
-      await api.capturePaymentIntent((processed as { id: string }).id);
+    // Replace the collect step in runRealPayment:
 
-      setPaymentState('success');
-      return { success: true, paymentIntentId: (processed as { id: string }).id };
+// 4. Collect
+setPaymentState('collecting');
+const { paymentIntent: collected, error: collectError } =
+  await stripeHooks.collectPaymentMethod({
+    paymentIntent: intentData as any, // ← backend response shape matches, cast cleanly
+  });
+if (collectError) { throw new Error(collectError.message); }
 
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Payment failed.';
-      setPaymentState('failed');
-      setErrorMessage(message);
-      return { success: false, error: message };
-    } finally {
-      // Always try to disconnect reader
-      try { await stripeService.disconnectReader(stripeHooks); } catch { /* silent */ }
-    }
-  }, []);
+    // 5. Confirm — correct param is { paymentIntent: collected }
+    setPaymentState('processing');
+    const { paymentIntent: processed, error: processError } =
+      await stripeHooks.confirmPaymentIntent({
+        paymentIntent: collected!,
+      });
+    if (processError) { throw new Error(processError.message); }
+
+    // 6. Capture on backend
+    await api.capturePaymentIntent(processed!.id);
+
+    setPaymentState('success');
+    return { success: true, paymentIntentId: processed!.id };
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Payment failed.';
+    setPaymentState('failed');
+    setErrorMessage(message);
+    return { success: false, error: message };
+
+  } finally {
+    try { await stripeHooks.disconnectReader(); } catch { /* silent */ }
+  }
+}, [stripeHooks]);
 
   // ── Public: start payment ──────────────────────────────────────
   const startPayment = useCallback(async (
     args: StartPaymentArgs,
-    stripeHooks?: any,
   ): Promise<PaymentResult> => {
     if (MOCK_MODE) { return runMockPayment(); }
-    if (!stripeHooks) { throw new Error('stripeHooks required in non-mock mode'); }
-    return runRealPayment(args, stripeHooks);
+    return runRealPayment(args);
   }, [runMockPayment, runRealPayment]);
 
   // ── Public: cancel payment ─────────────────────────────────────
-  const cancelPayment = useCallback(async (stripeHooks?: any): Promise<void> => {
+  const cancelPayment = useCallback(async (): Promise<void> => {
     try {
-      if (!MOCK_MODE && stripeHooks) {
-        await stripeService.cancelCollect(stripeHooks);
+      if (!MOCK_MODE) {
+        await stripeHooks.cancelCollectPaymentMethod();
       }
       if (paymentIntentIdRef.current) {
         await api.cancelPaymentIntent(paymentIntentIdRef.current);
@@ -132,7 +165,7 @@ const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
       setPaymentState('cancelled');
       paymentIntentIdRef.current = null;
     }
-  }, []);
+  }, [stripeHooks]);
 
   // ── Status messages shown on TapScreen ────────────────────────
   const STATUS_MESSAGES: Record<PaymentState, string> = {
