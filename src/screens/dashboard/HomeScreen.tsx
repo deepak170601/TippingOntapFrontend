@@ -1,5 +1,5 @@
 // src/screens/dashboard/HomeScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, RefreshControl,
   TouchableOpacity, StyleSheet, StatusBar,
@@ -17,49 +17,44 @@ import {
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
 
-interface DashboardData {
-  upcoming:    Event[];
-  active:      Event[];
-  past:        Event[];
-  totalProfit: number;
-}
-
-const MOCK_DATA: DashboardData = {
-  totalProfit: 25000,
-  upcoming: [
-    { id: '1', name: "Jenna's Wedding Reception", date: 'March 10, 2026', location: 'NYC'      },
-    { id: '2', name: "Jonnah's Engagement",        date: 'March 20, 2026', location: 'Brooklyn' },
-  ],
-  active: [
-    { id: '3', name: "Private Party – Emma's Birthday", date: 'Feb 28, 2026', location: 'New York' },
-  ],
-  past: [
-    { id: '4', name: 'Wedding Reception', date: 'Feb 10, 2026', location: '', totalTips: 23000 },
-    { id: '5', name: "Valentine's Day",   date: 'Feb 14, 2026', location: '', totalTips: 15000 },
-  ],
-};
-
 const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
-  const { user }                    = useAuthContext();
-  const rootNavigation              = useNavigation<RootNavigationProp>(); // ← root stack
-  const [data,       setData]       = useState<DashboardData>(MOCK_DATA);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const { user }       = useAuthContext();
+  const rootNavigation = useNavigation<RootNavigationProp>();
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+  const [activeEvents,   setActiveEvents]   = useState<Event[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+  const [pastEvents,     setPastEvents]     = useState<Event[]>([]);
+  const [totalProfit,    setTotalProfit]    = useState<number>(0);
+  const [loading,        setLoading]        = useState<boolean>(true);
+  const [refreshing,     setRefreshing]     = useState<boolean>(false);
+
+  const loadData = useCallback(async () => {
     try {
       const [eventsRes, statsRes] = await Promise.all([
-        api.getEvents(), api.getHomeStats(),
+        api.getEvents(),
+        api.getHomeStats(),
       ]);
-      setData({
-        upcoming:    eventsRes.upcoming ?? [],
-        active:      eventsRes.active   ?? [],
-        past:        (eventsRes.past    ?? []).slice(0, 2),
-        totalProfit: statsRes.totalProfit ?? 0,
-      });
-    } catch { /* keep mock data */ }
-    setRefreshing(false);
+      setActiveEvents(eventsRes.active     ?? []);
+      setUpcomingEvents(eventsRes.upcoming ?? []);
+      setPastEvents((eventsRes.past        ?? []).slice(0, 2));
+      setTotalProfit(statsRes.totalProfit  ?? 0);
+    } catch (err) {
+      console.error('HomeScreen load error:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  const fmt = (cents: number) =>
+    (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   // ── Navigation handlers ────────────────────────────────────
   const handleViewTip = (event: Event): void => {
@@ -67,14 +62,11 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
   };
 
   const handleEndEvent = async (event: Event): Promise<void> => {
-    try { await api.endEvent(event.id); onRefresh(); }
+    try { await api.endEvent(event.id); loadData(); }
     catch { /* silent */ }
   };
 
-  const firstName     = user?.fullName?.split(' ')[0] ?? 'Alex';
-  const profitFormatted = (data.totalProfit / 100).toLocaleString('en-US', {
-    style: 'currency', currency: 'USD',
-  });
+  const firstName = user?.fullName?.split(' ')[0] ?? 'Alex';
 
   return (
     <View style={styles.container}>
@@ -91,7 +83,7 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
       <View style={styles.profitStrip}>
         <View style={styles.profitLeft}>
           <Text style={styles.profitLabel}>Total Profit : </Text>
-          <Text style={styles.profitAmount}>{profitFormatted}</Text>
+          <Text style={styles.profitAmount}>{fmt(totalProfit)}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('Wallet')}>
           <Text style={styles.viewHistory}>View History</Text>
@@ -118,10 +110,10 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
           <View style={styles.upcomingContent}>
             <View style={styles.upcomingMeta}>
               <Text style={styles.upcomingDate}>
-                {data.upcoming[0]?.date ?? 'No upcoming events'}
+                {upcomingEvents[0]?.date ?? 'No upcoming events'}
               </Text>
               <Text style={styles.upcomingLocation}>
-                {data.upcoming[0]?.location ?? ''}
+                {upcomingEvents[0]?.location ?? ''}
               </Text>
             </View>
             <View style={styles.upcomingCenter}>
@@ -143,12 +135,12 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
         <SectionHeader
           title="Active Events"
           action="See All"
-          onPress={() => rootNavigation.navigate('AllEvents')}
+          onPress={() => rootNavigation.navigate('ActiveEvents')}
         />
-        {data.active.length === 0 ? (
+        {activeEvents.length === 0 ? (
           <EmptyCard message="No active events right now" />
         ) : (
-          data.active.map(event => (
+          activeEvents.map(event => (
             <ActiveEventCard
               key={event.id}
               event={event}
@@ -162,16 +154,16 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
         <SectionHeader
           title="Past Events"
           action="See All"
-          onPress={() => rootNavigation.navigate('AllEvents')}
+          onPress={() => rootNavigation.navigate('PastEvents')}
         />
         <View style={styles.pastCard}>
-          {data.past.length === 0 ? (
+          {pastEvents.length === 0 ? (
             <EmptyCard message="No past events" />
           ) : (
-            data.past.map((event, index) => (
+            pastEvents.map((event, index) => (
               <React.Fragment key={event.id}>
-                <PastEventRow event={event} />
-                {index < data.past.length - 1 && <View style={styles.pastDivider} />}
+                <PastEventRow event={event} fmt={fmt} />
+                {index < pastEvents.length - 1 && <View style={styles.pastDivider} />}
               </React.Fragment>
             ))
           )}
@@ -213,17 +205,12 @@ const ActiveEventCard = ({
   </View>
 );
 
-const PastEventRow = ({ event }: { event: Event }) => {
-  const tips = ((event.totalTips ?? 0) / 100).toLocaleString('en-US', {
-    style: 'currency', currency: 'USD',
-  });
-  return (
-    <View style={styles.pastRow}>
-      <Text style={styles.pastName}>{event.name}</Text>
-      <Text style={styles.pastAmount}>{tips}</Text>
-    </View>
-  );
-};
+const PastEventRow = ({ event, fmt }: { event: Event; fmt: (cents: number) => string }) => (
+  <View style={styles.pastRow}>
+    <Text style={styles.pastName}>{event.name}</Text>
+    <Text style={styles.pastAmount}>{fmt(event.totalAmount ?? 0)}</Text>
+  </View>
+);
 
 const EmptyCard = ({ message }: { message: string }) => (
   <View style={styles.emptyCard}>

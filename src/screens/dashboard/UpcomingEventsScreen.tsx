@@ -1,35 +1,44 @@
 // src/screens/dashboard/UpcomingEventsScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, FlatList, TextInput,
+  StatusBar, FlatList, TextInput, RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';                      // ← changed
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack'; // ← changed
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { Event } from '../../services/api';
+import api from '../../services/api';
 import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import BottomTabBar from '../../components/BottomTabBar';
 
-// ── Typed navigation — full stack, not screen-scoped ──────────
-type NavProp = NativeStackNavigationProp<RootStackParamList>;                   // ← changed
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-const MOCK_UPCOMING: Event[] = [
-  { id: '1', name: "Jenna's wedding reception",   date: 'Wed, 28 Feb 2026',   location: 'NYC'       },
-  { id: '2', name: "Jonnah's engagement",          date: 'Sat, 20 March 2026', location: 'Brooklyn'  },
-  { id: '3', name: "Elena's private party",        date: 'Fri, 25 March 2026', location: 'Manhattan' },
-  { id: '4', name: "Ellen has a work anniversary", date: 'Fri, 25 March 2026', location: 'Queens'    },
-  { id: '5', name: "Elena's Private Party",        date: 'Fri, 25 March 2026', location: 'Brooklyn'  },
-  { id: '6', name: "Elena's Private Party",        date: 'Fri, 25 March 2026', location: 'Bronx'     },
-];
+const UpcomingEventsScreen = (): React.JSX.Element => {
+  const navigation = useNavigation<NavProp>();
+  const [search,     setSearch]     = useState<string>('');
+  const [events,     setEvents]     = useState<Event[]>([]);
+  const [loading,    setLoading]    = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-// ── No props — navigation comes from hook instead ─────────────
-const UpcomingEventsScreen = (): React.JSX.Element => {                         // ← changed
-  const navigation = useNavigation<NavProp>();                                  // ← changed
-  const [search, setSearch] = useState<string>('');
-  const filtered = MOCK_UPCOMING.filter(e =>
+  const loadData = useCallback(async () => {
+    try {
+      const res = await api.getEvents();
+      setEvents(res.upcoming ?? []);
+    } catch (err) {
+      console.error('UpcomingEvents load error:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const filtered = events.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -37,10 +46,10 @@ const UpcomingEventsScreen = (): React.JSX.Element => {                         
     <TouchableOpacity
       style={[
         styles.eventRow,
-        index === 0                    && styles.eventRowFirst,
-        index === filtered.length - 1  && styles.eventRowLast,
+        index === 0                   && styles.eventRowFirst,
+        index === filtered.length - 1 && styles.eventRowLast,
       ]}
-      onPress={() => navigation.navigate('ActiveEvent', { event: item })}
+      onPress={() => navigation.navigate('UpcomingEventDetail', { event: item })}
       activeOpacity={0.75}
     >
       <View style={styles.eventInfo}>
@@ -98,11 +107,22 @@ const UpcomingEventsScreen = (): React.JSX.Element => {                         
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyEmoji}>📅</Text>
-            <Text style={styles.emptyText}>No events found</Text>
+            <Text style={styles.emptyText}>
+              {loading ? 'Loading…' : 'No events found'}
+            </Text>
           </View>
         }
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); loadData(); }}
+            colors={[colours.primary]}
+            tintColor={colours.primary}
+          />
+        }
       />
+      <BottomTabBar />
     </View>
   );
 };
@@ -157,7 +177,7 @@ const styles = StyleSheet.create({
     paddingBottom:     spacing.xxxl,
   },
 
-  // Event rows — grouped card style matching Image 4
+  // Event rows — grouped card style
   eventRow: {
     flexDirection:     'row',
     alignItems:        'center',

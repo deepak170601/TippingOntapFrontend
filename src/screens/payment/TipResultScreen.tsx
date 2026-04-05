@@ -87,23 +87,14 @@ const TipResultScreen = (): React.JSX.Element => {
           </View>
         ) : null}
 
-        {/* Done button */}
         <TouchableOpacity
           style={styles.doneBtn}
-          onPress={() => navigation.popToTop()}
+          onPress={() => navigation.goBack()}
           activeOpacity={0.85}
         >
           <Text style={styles.doneBtnText}>Done</Text>
         </TouchableOpacity>
 
-        {/* Make another */}
-        <TouchableOpacity
-          style={styles.anotherBtn}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.anotherBtnText}>Make Another Payment</Text>
-        </TouchableOpacity>
       </Animated.View>
     </View>
   );

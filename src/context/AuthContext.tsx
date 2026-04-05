@@ -6,19 +6,28 @@ import React, {
 import storage from '../services/storage';
 import api, { AuthResponse } from '../services/api';
 
-interface User {
-  id:       string;
-  fullName: string;
-  email:    string;
+// ── User type — updated to match new backend shape ────────────
+export interface User {
+  id:          string;
+  firstName:   string;
+  lastName:    string;
+  fullName:    string;
+  email:       string;
+  phoneNumber: string;
+  companyName?: string;
+  address1?:   string;
+  address2?:   string;
+  city?:       string;
+  state?:      string;
+  zip?:        string;
 }
 
 interface AuthContextType {
-  user:            User | null;
-  isLoading:       boolean;
-  isAuthenticated: boolean;
-  login:           (email: string, password: string) => Promise<User>;
-  signup:          (fullName: string, email: string, password: string) => Promise<User>;
-  logout:          () => Promise<void>;
+  user:             User | null;
+  isLoading:        boolean;
+  isAuthenticated:  boolean;
+  loginWithTokens:  (accessToken: string, refreshToken: string, user: AuthResponse['user']) => Promise<void>;
+  logout:           () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -27,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user,      setUser]    = useState<User | null>(null);
   const [isLoading, setLoading] = useState<boolean>(true);
 
-  // On app launch — restore session from storage
+  // ── Restore session on app launch ─────────────────────────
   useEffect(() => {
     const restoreSession = async (): Promise<void> => {
       try {
@@ -35,8 +44,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!token) { return; }
         const refreshed = await api.refresh();
         if (refreshed) {
-          const storedUser = await storage.getUser();
-          setUser(storedUser);
+        const storedUser = await storage.getUser();
+        setUser(storedUser as User | null);
+        } else {
+          await storage.clearAll();
         }
       } catch {
         await storage.clearAll();
@@ -47,22 +58,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     restoreSession();
   }, []);
 
-  const login = useCallback(async (
-    email: string, password: string,
-  ): Promise<User> => {
-    const data: AuthResponse = await api.login(email, password);
-    await storage.saveTokens(data.accessToken, data.refreshToken);
-    await storage.saveUser(data.user);
-    setUser(data.user);
-    return data.user;
+  // ── loginWithTokens — called after OTP verify or register ──
+  const loginWithTokens = useCallback(async (
+    accessToken:  string,
+    refreshToken: string,
+    userData:     AuthResponse['user'],
+  ): Promise<void> => {
+    await storage.saveTokens(accessToken, refreshToken);
+    await storage.saveUser(userData);
+    setUser(userData as User);
   }, []);
-
-  const signup = useCallback(async (
-    fullName: string, email: string, password: string,
-  ): Promise<User> => {
-    await api.signup(fullName, email, password);
-    return login(email, password);
-  }, [login]);
 
   const logout = useCallback(async (): Promise<void> => {
     await api.logout();
@@ -71,8 +76,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, isLoading, isAuthenticated: !!user,
-      login, signup, logout,
+      user,
+      isLoading,
+      isAuthenticated: !!user,
+      loginWithTokens,
+      logout,
     }}>
       {children}
     </AuthContext.Provider>

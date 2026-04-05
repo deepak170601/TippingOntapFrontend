@@ -118,7 +118,7 @@ export const shadows = {
 } as const;
 
 export const tabBar = {
-  background:    '#FFFFFF',
+  background:    '#000000',
   activeColor:   '#1A3ADB',
   inactiveColor: '#9CA3AF',
   height:        64,

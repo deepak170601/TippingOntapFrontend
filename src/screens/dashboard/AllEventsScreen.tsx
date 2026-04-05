@@ -1,72 +1,76 @@
 // src/screens/dashboard/AllEventsScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, SectionList, TextInput,
+  StatusBar, SectionList, TextInput, RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { Event } from '../../services/api';
+import api from '../../services/api';
 import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import BottomTabBar from '../../components/BottomTabBar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Section {
-  title:  string;
-  type:   'active' | 'upcoming' | 'past';
-  data:   Event[];
+  title: string;
+  type:  'active' | 'upcoming' | 'past';
+  data:  Event[];
 }
-
-const MOCK_ALL: Section[] = [
-  {
-    title: 'Active Events',
-    type:  'active',
-    data: [
-      { id: 'a1', name: "Private Party – Emma's Birthday", date: 'Feb 28, 2026', location: 'New York' },
-    ],
-  },
-  {
-    title: 'Upcoming Events',
-    type:  'upcoming',
-    data: [
-      { id: 'u1', name: "Jenna's wedding reception",   date: 'Wed, 28 Feb 2026',   location: 'NYC'       },
-      { id: 'u2', name: "Jonnah's engagement",          date: 'Sat, 20 March 2026', location: 'Brooklyn'  },
-      { id: 'u3', name: "Elena's private party",        date: 'Fri, 25 March 2026', location: 'Manhattan' },
-      { id: 'u4', name: "Ellen has a work anniversary", date: 'Fri, 25 March 2026', location: 'Queens'    },
-    ],
-  },
-  {
-    title: 'Past Events',
-    type:  'past',
-    data: [
-      { id: 'p1', name: 'Wedding Reception', date: 'Feb 10, 2026', location: 'NYC',      totalTips: 23000 },
-      { id: 'p2', name: "Valentine's Day",   date: 'Feb 14, 2026', location: 'Brooklyn', totalTips: 15000 },
-    ],
-  },
-];
 
 // ── Section header colours ────────────────────────────────────
 const SECTION_COLOURS = {
-  active:   { bg: 'rgba(34,197,94,0.1)',  border: colours.success, text: colours.success  },
-  upcoming: { bg: colours.primaryFade,    border: colours.primary, text: colours.primary  },
+  active:   { bg: 'rgba(34,197,94,0.1)',    border: colours.success,       text: colours.success       },
+  upcoming: { bg: colours.primaryFade,      border: colours.primary,       text: colours.primary       },
   past:     { bg: 'rgba(107,114,128,0.08)', border: colours.textSecondary, text: colours.textSecondary },
 };
 
 const AllEventsScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NavProp>();
-  const [search,   setSearch]   = useState<string>('');
+  const [search,     setSearch]     = useState<string>('');
+  const [upcoming,   setUpcoming]   = useState<Event[]>([]);
+  const [active,     setActive]     = useState<Event[]>([]);
+  const [past,       setPast]       = useState<Event[]>([]);
+  const [loading,    setLoading]    = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Filter across all sections
-  const filtered: Section[] = MOCK_ALL.map(section => ({
-    ...section,
-    data: section.data.filter(e =>
-      e.name.toLowerCase().includes(search.toLowerCase())
-    ),
-  })).filter(s => s.data.length > 0);
+  const loadData = useCallback(async () => {
+    try {
+      const res = await api.getEvents();
+      setUpcoming(res.upcoming ?? []);
+      setActive(res.active     ?? []);
+      setPast(res.past         ?? []);
+    } catch (err) {
+      console.error('AllEvents load error:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Build sections from live state ───────────────────────────
+  const allSections: Section[] = [
+    { title: 'Active Events',   type: 'active',   data: active   },
+    { title: 'Upcoming Events', type: 'upcoming', data: upcoming },
+    { title: 'Past Events',     type: 'past',     data: past     },
+  ];
+
+  // ── Filter across all sections by search ─────────────────────
+  const filtered: Section[] = allSections
+    .map(section => ({
+      ...section,
+      data: section.data.filter(e =>
+        e.name.toLowerCase().includes(search.toLowerCase())
+      ),
+    }))
+    .filter(s => s.data.length > 0);
 
   const renderSectionHeader = ({ section }: { section: Section }) => {
     const col = SECTION_COLOURS[section.type];
@@ -87,13 +91,13 @@ const AllEventsScreen = (): React.JSX.Element => {
 
     const handlePress = () => {
       if (section.type === 'active' || section.type === 'upcoming') {
-        navigation.navigate('ActiveEvent', { event: item });
+        navigation.navigate('UpcomingEventDetail', { event: item });
       }
       // past events — could navigate to a detail screen later
     };
 
-    const tipFormatted = item.totalTips
-      ? (item.totalTips / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+    const tipFormatted = item.totalAmount
+      ? (item.totalAmount / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
       : null;
 
     return (
@@ -189,14 +193,25 @@ const AllEventsScreen = (): React.JSX.Element => {
         ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={styles.listContent}
         stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); loadData(); }}
+            colors={[colours.primary]}
+            tintColor={colours.primary}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyEmoji}>📭</Text>
-            <Text style={styles.emptyText}>No events found</Text>
+            <Text style={styles.emptyText}>
+              {loading ? 'Loading…' : 'No events found'}
+            </Text>
           </View>
         }
-        showsVerticalScrollIndicator={false}
       />
+      <BottomTabBar />
     </View>
   );
 };
@@ -290,16 +305,16 @@ const styles = StyleSheet.create({
 
   // Live badge
   liveBadge: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             4,
-    backgroundColor: 'rgba(34,197,94,0.1)',
-    borderRadius:    radius.round,
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               4,
+    backgroundColor:   'rgba(34,197,94,0.1)',
+    borderRadius:      radius.round,
     paddingHorizontal: spacing.sm,
     paddingVertical:   2,
-    marginBottom:    spacing.xs,
+    marginBottom:      spacing.xs,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colours.success },
+  liveDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: colours.success },
   liveText: { fontSize: fontSizes.xs, fontWeight: fontWeights.bold, color: colours.success },
 
   // Tip amount for past

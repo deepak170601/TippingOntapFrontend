@@ -1,7 +1,8 @@
 // src/navigation/MainNavigator.tsx
 import React from 'react';
-import { View, Text, Platform, StyleSheet } from 'react-native';
+import { View, Platform, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import HomeScreen        from '../screens/dashboard/HomeScreen';
 import WalletScreen      from '../screens/dashboard/WalletScreen';
 import CreateEventScreen from '../screens/dashboard/CreateEventScreen';
@@ -19,13 +20,9 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TabIcon = ({ symbol, color }: { symbol: string; color: string }) => (
-  <Text style={{ fontSize: 22, color }}>{symbol}</Text>
-);
-
 const CenterTabIcon = ({ focused }: { focused: boolean }) => (
   <View style={[styles.centerFab, focused && styles.centerFabActive]}>
-    <Text style={styles.centerFabText}>+</Text>
+    <Icon name="add" size={28} color={colours.white} />
   </View>
 );
 
@@ -44,7 +41,9 @@ const MainNavigator = (): React.JSX.Element => (
       component={HomeScreen}
       options={{
         tabBarLabel: 'Home',
-        tabBarIcon: ({ color }) => <TabIcon symbol="⌂" color={color} />,
+        tabBarIcon: ({ color, size }) => (
+          <Icon name="home" size={size} color={color} />
+        ),
       }}
     />
     <Tab.Screen
@@ -52,14 +51,16 @@ const MainNavigator = (): React.JSX.Element => (
       component={WalletScreen}
       options={{
         tabBarLabel: 'Wallet',
-        tabBarIcon: ({ color }) => <TabIcon symbol="◈" color={color} />,
+        tabBarIcon: ({ color, size }) => (
+          <Icon name="account-balance-wallet" size={size} color={color} />
+        ),
       }}
     />
     <Tab.Screen
       name="CreateEvent"
       component={CreateEventScreen}
       options={{
-        tabBarLabel: '',
+        tabBarLabel:         '',
         tabBarIcon: ({ focused }) => <CenterTabIcon focused={focused} />,
       }}
     />
@@ -68,7 +69,9 @@ const MainNavigator = (): React.JSX.Element => (
       component={SettingsScreen}
       options={{
         tabBarLabel: 'Settings',
-        tabBarIcon: ({ color }) => <TabIcon symbol="⚙" color={color} />,
+        tabBarIcon: ({ color, size }) => (
+          <Icon name="settings" size={size} color={color} />
+        ),
       }}
     />
     <Tab.Screen
@@ -76,7 +79,9 @@ const MainNavigator = (): React.JSX.Element => (
       component={ProfileScreen}
       options={{
         tabBarLabel: 'Profile',
-        tabBarIcon: ({ color }) => <TabIcon symbol="◉" color={color} />,
+        tabBarIcon: ({ color, size }) => (
+          <Icon name="person" size={size} color={color} />
+        ),
       }}
     />
   </Tab.Navigator>
@@ -114,15 +119,7 @@ const styles = StyleSheet.create({
     shadowOpacity:   0.4,
     shadowRadius:    8,
   },
-  centerFabActive: {
-    backgroundColor: colours.primaryDark,
-  },
-  centerFabText: {
-    fontSize:    28,
-    color:       colours.white,
-    fontWeight:  '300',
-    lineHeight:  32,
-  },
+  centerFabActive: { backgroundColor: colours.primaryDark },
 });
 
 export default MainNavigator;
