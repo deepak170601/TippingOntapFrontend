@@ -26,7 +26,7 @@ interface PaymentResult {
   paymentIntentId?: string;
 }
 
-const MOCK_MODE = false;
+const MOCK_MODE = true;
 
 const usePayment = () => {
   const stripeHooks = useStripeTerminal();
@@ -108,7 +108,7 @@ const usePayment = () => {
 
       const { error: connectError } = await stripeHooks.connectReader({
         reader,
-        locationId:      'your_stripe_location_id',
+        locationId:      'tml_GeLpGAsDjiphcT',
         discoveryMethod: 'tapToPay',
       });
       if (connectError) { throw new Error(connectError.message); }

@@ -49,7 +49,7 @@ export const stripeService = {
   ): Promise<unknown> => {
     const { reader: connected, error } = await hooks.connectLocalMobileReader({
       reader,
-      locationId: 'your_stripe_location_id', // ← replace with real ID
+      locationId: 'tml_GeLpGAsDjiphcT', // ← replace with real ID
     });
     if (error) { throw new Error(error.message); }
     return connected;

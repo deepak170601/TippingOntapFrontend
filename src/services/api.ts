@@ -1,7 +1,7 @@
 // src/services/api.ts
 import storage from './storage';
 
-const BASE_URL = 'http://10.81.248.76:5203';
+const BASE_URL = 'https://tippingontapbackend.fly.dev';
 
 interface RequestBody {
   [key: string]: unknown;
@@ -76,25 +76,25 @@ const request = async <T>(
 };
 
 // ── Auth ──────────────────────────────────────────────────────
-// Change to:
 export interface AuthResponse {
   accessToken:  string;
   refreshToken: string;
   expiresIn:    number;
   user: {
-    id:           string;
-    firstName:    string;
-    lastName:     string;
-    fullName:     string;
-    email:        string;
-    phoneNumber:  string;
-    companyName?: string;
-    address1?:    string;
-    address2?:    string;
-    city?:        string;
-    state?:       string;
-    zip?:         string;
-  };
+  id:                 string;
+  firstName:          string;
+  lastName:           string;
+  fullName:           string;
+  email:              string;
+  phoneNumber:        string;
+  onboardingComplete: boolean;   // ← Goal 7
+  companyName?:       string;
+  address1?:          string;
+  address2?:          string;
+  city?:              string;
+  state?:             string;
+  zip?:               string;
+};
 }
 
 // ── Events ────────────────────────────────────────────────────
@@ -236,6 +236,30 @@ export const api = {
 
   capturePaymentIntent: (paymentIntentId: string, eventId: string) =>
     request<void>('POST', '/capture_payment_intent', { paymentIntentId, eventId }, true),
+
+  // ── Stripe Connect ─────────────────────────────────────────────
+  getOnboardingLink: () =>
+    request<{ url: string }>('POST', '/connect/onboard', null, true),
+
+  getConnectStatus: () =>
+    request<{
+      onboardingComplete: boolean;
+      chargesEnabled:     boolean;
+      payoutsEnabled:     boolean;
+    }>('GET', '/connect/status', null, true),
+
+  getConnectBalance: () =>
+    request<{
+      available: number;  // cents
+      pending:   number;  // cents
+    }>('GET', '/connect/balance', null, true),
+
+  withdraw: (amountCents?: number) =>
+    request<{
+      payoutId: string;
+      message:  string;
+    }>('POST', '/connect/withdraw', { amountCents: amountCents ?? null }, true),
+
 };
 
 export default api;

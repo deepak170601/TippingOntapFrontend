@@ -137,11 +137,13 @@ const LoginScreen = (): React.JSX.Element => {
     >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <Image
-        source={require('../../assets/PNG/Asset_4xhdpi.png')}
-        style={styles.waveBg}
-        resizeMode="cover"
-      />
+      <View style={styles.waveContainer}>
+        <Image
+          source={require('../../assets/PNG/Asset_4xhdpi.png')}
+          style={styles.waveBg}
+          resizeMode="cover"
+        />
+      </View>
 
       {/* ── "Log in" title on the wave ───────────────────── */}
       <View style={styles.titleWrap} pointerEvents="none">
@@ -262,14 +264,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
 
   // ── Wave background ───────────────────────────────────────
-  waveBg: {
-    position:   'absolute',
-    top:        0,
-    left:       0,
-    right:      0,
-    height:     height * 0.48,
-    overflow:   'hidden',
-  },
   // ── Title ─────────────────────────────────────────────────
   titleWrap: {
     position:          'absolute',
@@ -384,6 +378,18 @@ const styles = StyleSheet.create({
     color:      colours.primary,
     textAlign:  'center',
   },
+  waveContainer: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  height: height * 0.48,
+  overflow: 'hidden',
+},
+waveBg: {
+  width: '100%',
+  height: '87%',
+},
 });
 
 export default LoginScreen;

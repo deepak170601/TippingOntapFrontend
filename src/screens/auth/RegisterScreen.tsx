@@ -259,11 +259,13 @@ const RegisterScreen = (): React.JSX.Element => {
       >
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-        <Image
-          source={require('../../assets/PNG/Asset_4xhdpi.png')}
-          style={regStyles.waveBg}
-          resizeMode="cover"
-        />
+        <View style={regStyles.waveContainer}>
+          <Image
+            source={require('../../assets/PNG/Asset_4xhdpi.png')}
+            style={regStyles.waveBg}
+            resizeMode="cover"
+          />
+        </View>
 
         {/* ── "Sign up" title ───────────────────────────── */}
         <View style={regStyles.titleWrap} pointerEvents="none">
@@ -681,10 +683,7 @@ const styles = StyleSheet.create({
 // ── Phone/OTP step styles (unified sign-up screen) ────────────
 const regStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  waveBg: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    height: height * 0.48, overflow: 'hidden',
-  },
+
   titleWrap: {
     position: 'absolute', top: height * 0.28, right: spacing.xl, left: 0,
     alignItems: 'flex-end', zIndex: 10,
@@ -720,6 +719,27 @@ const regStyles = StyleSheet.create({
   switchText:     { fontSize: fontSizes.base, color: '#6B7280' },
   switchLink:     { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.primary },
   poweredBy:      { fontSize: fontSizes.sm, fontWeight: fontWeights.bold, color: colours.primary, textAlign: 'center' },
+
+  waveContainer: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  height: height * 0.48,
+  overflow: 'hidden',
+},
+
+waveBg: {
+  width: '100%',
+  height: '87%',
+
+  // 🔥 makes image feel richer
+  transform: [{ scale: 1.05 }], // slight zoom for better crop
+
+  // subtle positioning tweak (optional)
+  marginTop: -10, // adjust if needed for your asset
+},
+
 });
 
 export default RegisterScreen;

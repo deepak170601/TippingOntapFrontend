@@ -36,15 +36,6 @@ const SplashScreen = (): React.JSX.Element => {
         style={styles.bgImage}
         resizeMode="cover"
       />
-
-      {/* ── Animated content ──────────────────────────────── */}
-      <Animated.View style={[styles.content, { opacity, transform: [{ translateY }] }]}>
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoEmoji}>💳</Text>
-        </View>
-        <Text style={styles.appName}>Tipping On The Go</Text>
-        <Text style={styles.tagline}>Fast. Cashless. Effortless.</Text>
-      </Animated.View>
     </View>
   );
 };

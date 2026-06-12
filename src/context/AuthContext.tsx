@@ -8,26 +8,28 @@ import api, { AuthResponse } from '../services/api';
 
 // ── User type — updated to match new backend shape ────────────
 export interface User {
-  id:          string;
-  firstName:   string;
-  lastName:    string;
-  fullName:    string;
-  email:       string;
-  phoneNumber: string;
-  companyName?: string;
-  address1?:   string;
-  address2?:   string;
-  city?:       string;
-  state?:      string;
-  zip?:        string;
+  id:                 string;
+  firstName:          string;
+  lastName:           string;
+  fullName:           string;
+  email:              string;
+  phoneNumber:        string;
+  onboardingComplete: boolean;   // ← Goal 7
+  companyName?:       string;
+  address1?:          string;
+  address2?:          string;
+  city?:              string;
+  state?:             string;
+  zip?:               string;
 }
 
 interface AuthContextType {
-  user:             User | null;
-  isLoading:        boolean;
-  isAuthenticated:  boolean;
-  loginWithTokens:  (accessToken: string, refreshToken: string, user: AuthResponse['user']) => Promise<void>;
-  logout:           () => Promise<void>;
+  user:                   User | null;
+  isLoading:              boolean;
+  isAuthenticated:        boolean;
+  loginWithTokens:        (accessToken: string, refreshToken: string, user: AuthResponse['user']) => Promise<void>;
+  logout:                 () => Promise<void>;
+  updateOnboardingStatus: (complete: boolean) => void;   // ← Goal 7
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -44,8 +46,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!token) { return; }
         const refreshed = await api.refresh();
         if (refreshed) {
-        const storedUser = await storage.getUser();
-        setUser(storedUser as User | null);
+          const storedUser = await storage.getUser();
+          setUser(storedUser as User | null);
         } else {
           await storage.clearAll();
         }
@@ -74,6 +76,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
+  // ── updateOnboardingStatus — Goal 7 ───────────────────────
+  const updateOnboardingStatus = useCallback((complete: boolean): void => {
+    setUser(prev => prev ? { ...prev, onboardingComplete: complete } : prev);
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -81,6 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthenticated: !!user,
       loginWithTokens,
       logout,
+      updateOnboardingStatus,
     }}>
       {children}
     </AuthContext.Provider>

@@ -14,6 +14,7 @@ import {
 import { AuthProvider }         from './src/context/AuthContext';
 import AppNavigator             from './src/navigation/AppNavigator';
 import { fetchConnectionToken } from './src/services/stripe';
+import DeepLinkHandler from './src/components/DeepLinkHandler';
 
 type PermissionStatus = 'loading' | 'granted' | 'denied';
 
@@ -81,6 +82,7 @@ export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <AuthProvider>
+        <DeepLinkHandler />
         <StripeTerminalProvider
           logLevel="verbose"
           tokenProvider={fetchConnectionToken}
