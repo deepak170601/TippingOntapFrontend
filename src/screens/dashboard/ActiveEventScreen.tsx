@@ -139,6 +139,41 @@ const ActiveEventScreen = (): React.JSX.Element => {
     }
   };
 
+  // ── End Event with confirmation ────────────────────────────
+const [isEnding, setIsEnding] = useState<boolean>(false);
+
+const handleEndEvent = (): void => {
+  Alert.alert(
+    'End This Event?',
+    `"${event.name}" will be moved to Past Events and you will stop accepting tips for it. This cannot be undone.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End Event',
+        style: 'destructive',
+        onPress: async () => {
+          setIsEnding(true);
+          try {
+            await api.endEvent(event.id);
+            Alert.alert(
+              'Event Ended',
+              `"${event.name}" is now in your Past Events.`,
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          } catch (err) {
+            Alert.alert(
+              'Could Not End Event',
+              err instanceof Error ? err.message : 'Please try again.'
+            );
+          } finally {
+            setIsEnding(false);
+          }
+        },
+      },
+    ]
+  );
+};
+
   // ── Earnings calc — uses real live values ──────────────────
   const totalTips   = totalTipsCollected / 100;
   const fee         = totalTips * (MERCHANT_FEE_PERCENT / 100);
@@ -285,8 +320,20 @@ const ActiveEventScreen = (): React.JSX.Element => {
 
         <View style={styles.bottomPad} />
       </ScrollView>
+      {/* ── End Event button ──────────────────────────── */}
+        <TouchableOpacity
+          style={[styles.endEventBtn, isEnding && styles.endEventBtnDisabled]}
+          onPress={handleEndEvent}
+          disabled={isEnding}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.endEventBtnText}>
+            {isEnding ? 'Ending…' : 'End Event'}
+          </Text>
+        </TouchableOpacity>
       <BottomTabBar />
     </View>
+    
   );
 };
 
@@ -360,6 +407,22 @@ const styles = StyleSheet.create({
   finalValue:        { fontSize: fontSizes.base, fontWeight: fontWeights.extraBold, color: colours.primary },
 
   bottomPad: { height: spacing.xxxl },
+
+  endEventBtn: {
+    borderWidth:     1.5,
+    borderColor:     colours.error,
+    borderRadius:    radius.md,
+    paddingVertical: spacing.md,
+    alignItems:      'center',
+    marginTop:       spacing.lg,
+    backgroundColor: colours.surface,
+  },
+  endEventBtnDisabled: { opacity: 0.6 },
+  endEventBtnText: {
+    fontSize:   fontSizes.base,
+    fontWeight: fontWeights.bold,
+    color:      colours.error,
+  },
 });
 
 export default ActiveEventScreen;

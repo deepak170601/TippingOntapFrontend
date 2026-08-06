@@ -3,10 +3,11 @@ import React, {
   createContext, useContext, useState,
   useEffect, useCallback, ReactNode,
 } from 'react';
+import { Alert } from 'react-native';
 import storage from '../services/storage';
 import api, { AuthResponse } from '../services/api';
+import { registerSessionExpiredHandler } from '../services/api';
 
-// ── User type — updated to match new backend shape ────────────
 export interface User {
   id:                 string;
   firstName:          string;
@@ -14,8 +15,9 @@ export interface User {
   fullName:           string;
   email:              string;
   phoneNumber:        string;
-  onboardingComplete: boolean;   // ← Goal 7
+  onboardingComplete: boolean;
   companyName?:       string;
+  ein?:               string;
   address1?:          string;
   address2?:          string;
   city?:              string;
@@ -29,7 +31,8 @@ interface AuthContextType {
   isAuthenticated:        boolean;
   loginWithTokens:        (accessToken: string, refreshToken: string, user: AuthResponse['user']) => Promise<void>;
   logout:                 () => Promise<void>;
-  updateOnboardingStatus: (complete: boolean) => void;   // ← Goal 7
+  updateOnboardingStatus: (complete: boolean) => void;
+  updateUser:             (updated: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -60,25 +63,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     restoreSession();
   }, []);
 
-  // ── loginWithTokens — called after OTP verify or register ──
+  const logout = useCallback(async (): Promise<void> => {
+    await api.logout();
+    setUser(null);
+  }, []);
+
+  // ── Global SESSION_EXPIRED handler ────────────────────────
+  // api.ts calls this whenever refresh fails — clears session
+  // and shows a single alert. AppNavigator reacts automatically.
+  useEffect(() => {
+    registerSessionExpiredHandler(async () => {
+      await storage.clearAll();
+      setUser(null);
+      Alert.alert(
+        'Session Expired',
+        'Please sign in again to continue.',
+      );
+    });
+  }, []);
+
   const loginWithTokens = useCallback(async (
     accessToken:  string,
     refreshToken: string,
     userData:     AuthResponse['user'],
   ): Promise<void> => {
     await storage.saveTokens(accessToken, refreshToken);
-    await storage.saveUser(userData);
+    await storage.saveUser(userData as User);
     setUser(userData as User);
   }, []);
 
-  const logout = useCallback(async (): Promise<void> => {
-    await api.logout();
-    setUser(null);
+  // ── Persist onboarding status to AsyncStorage ─────────────
+  const updateOnboardingStatus = useCallback((complete: boolean): void => {
+    setUser(prev => {
+      if (!prev) { return prev; }
+      const updated = { ...prev, onboardingComplete: complete };
+      storage.saveUser(updated);
+      return updated;
+    });
   }, []);
 
-  // ── updateOnboardingStatus — Goal 7 ───────────────────────
-  const updateOnboardingStatus = useCallback((complete: boolean): void => {
-    setUser(prev => prev ? { ...prev, onboardingComplete: complete } : prev);
+  // ── Generic user update (used by ProfileScreen) ───────────
+  const updateUser = useCallback((patch: Partial<User>): void => {
+    setUser(prev => {
+      if (!prev) { return prev; }
+      const updated = { ...prev, ...patch };
+      storage.saveUser(updated);
+      return updated;
+    });
   }, []);
 
   return (
@@ -89,6 +120,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loginWithTokens,
       logout,
       updateOnboardingStatus,
+      updateUser,
     }}>
       {children}
     </AuthContext.Provider>

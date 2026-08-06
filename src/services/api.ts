@@ -2,10 +2,94 @@
 import storage from './storage';
 
 const BASE_URL = 'https://tippingontapbackend.fly.dev';
+const REQUEST_TIMEOUT_MS = 15000;
 
 interface RequestBody {
   [key: string]: unknown;
 }
+
+export interface Payout {
+  id:           string;
+  amount:       number;   // cents
+  currency:     string;
+  status:       'paid' | 'pending' | 'in_transit' | 'failed' | 'canceled';
+  arrivalDate?: string;
+  createdAt:    string;
+  failureCode?: string;
+}
+
+// ── Dev-only logging ────────────────────────────────────────────
+declare const __DEV__: boolean;
+
+const log = (...args: unknown[]) => {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.log(...args);
+  }
+};
+
+const SENSITIVE_KEYS = ['accessToken', 'refreshToken', 'code'];
+
+const sanitize = (body: unknown): unknown => {
+  if (!body || typeof body !== 'object') return body;
+
+  const copy = { ...(body as Record<string, unknown>) };
+
+  for (const key of SENSITIVE_KEYS) {
+    if (key in copy) { copy[key] = '***'; }
+  }
+
+  return copy;
+};
+
+// ── Error extraction ────────────────────────────────────────────
+interface ErrorShape {
+  message?: string;
+  error?:   string;
+  title?:   string;
+  errors?:  Record<string, string[]>;
+}
+
+const extractError = (data: ErrorShape): string | null => {
+  if (data.message) { return data.message; }
+  if (data.error) { return data.error; }
+
+  if (data.errors) {
+    const first = Object.values(data.errors)[0];
+    if (Array.isArray(first) && first.length) { return first[0]; }
+  }
+
+  if (data.title) { return data.title; }
+
+  return null;
+};
+
+// ── Auth header helper ──────────────────────────────────────────
+const addAuthHeader = async (headers: Record<string, string>): Promise<void> => {
+  const token = await storage.getAccessToken();
+  if (token) { headers['Authorization'] = `Bearer ${token}`; }
+};
+
+// ── Prevent concurrent refresh requests ─────────────────────────
+let refreshPromise: Promise<boolean> | null = null;
+
+const refreshOnce = (): Promise<boolean> => {
+  if (!refreshPromise) {
+    refreshPromise = api.refresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+};
+
+// ── Session expiry callback ───────────────────────────────────
+// AuthContext registers a handler here on mount. When refresh
+// fails, api.ts invokes it to clear session state globally
+// instead of every screen catching SESSION_EXPIRED itself.
+type SessionExpiredHandler = () => void | Promise<void>;
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
+export const registerSessionExpiredHandler = (fn: SessionExpiredHandler): void => {
+  sessionExpiredHandler = fn;
+};
 
 const request = async <T>(
   method:       string,
@@ -19,57 +103,58 @@ const request = async <T>(
   };
 
   if (requiresAuth) {
-    const token = await storage.getAccessToken();
-    if (token) { headers['Authorization'] = `Bearer ${token}`; }
+    await addAuthHeader(headers);
   }
 
   const options: RequestInit = { method, headers };
   if (body) { options.body = JSON.stringify(body); }
 
   // ── Log outgoing request ───────────────────────────────────
-  console.log(`🚀 [API] ${method} ${path}`, body ? JSON.stringify(body, null, 2) : '');
+  log(`🚀 [API] ${method} ${path}`, body ? JSON.stringify(sanitize(body), null, 2) : '');
 
-  // ── Network errors ─────────────────────────────────────────
+  // ── Network errors / timeout ───────────────────────────────
+  const url = new URL(path, BASE_URL).toString();
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, options);
-  } catch {
+    response = await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out.');
+    }
     throw new Error('Cannot reach server. Check your connection.');
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   // ── 401 refresh flow ───────────────────────────────────────
   if (response.status === 401 && requiresAuth && !isRetry) {
-    const refreshed = await api.refresh();
+    const refreshed = await refreshOnce();
     if (refreshed) { return request<T>(method, path, body, true, true); }
+    // Refresh failed — notify AuthContext to clear session globally
+    if (sessionExpiredHandler) { await sessionExpiredHandler(); }
     throw new Error('SESSION_EXPIRED');
   }
 
-  // ── Parse response ─────────────────────────────────────────
-  let data: T & {
-    message?: string;
-    title?:   string;
-    errors?:  Record<string, string[]>;
-  };
+  // ── Parse response (handles empty/204 bodies) ──────────────
+  let data: T & ErrorShape;
 
   try {
-    data = await response.json();
+    const text = await response.text();
+    data = text ? JSON.parse(text) : (undefined as unknown as T & ErrorShape);
   } catch {
     throw new Error(`Server error (${response.status}). Please try again.`);
   }
 
   // ── Log response ───────────────────────────────────────────
-  console.log(`${response.ok ? '✅' : '❌'} [API] ${response.status} ${path}`, JSON.stringify(data, null, 2));
+  log(`${response.ok ? '✅' : '❌'} [API] ${response.status} ${path}`, JSON.stringify(data, null, 2));
 
   // ── Extract error message ──────────────────────────────────
   if (!response.ok) {
-    if (data.message) { throw new Error(data.message); }
-    if (data.errors) {
-      const firstField = Object.values(data.errors)[0];
-      const firstMsg   = Array.isArray(firstField) ? firstField[0] : null;
-      if (firstMsg) { throw new Error(firstMsg); }
-    }
-    if (data.title) { throw new Error(data.title); }
-    throw new Error(`Request failed (${response.status})`);
+    throw new Error(extractError(data ?? {}) ?? `Request failed (${response.status})`);
   }
 
   return data;
@@ -260,6 +345,25 @@ export const api = {
       message:  string;
     }>('POST', '/connect/withdraw', { amountCents: amountCents ?? null }, true),
 
+    // ── Profile ─────────────────────────────────────────────────
+getProfile: () =>
+  request<AuthResponse['user'] & { ein?: string }>('GET', '/profile', null, true),
+
+updateProfile: (body: {
+  firstName:    string;
+  lastName:     string;
+  address1:     string;
+  city:         string;
+  state:        string;
+  zip:          string;
+  address2?:    string;
+  companyName?: string;
+  ein?:         string;
+}) => request<AuthResponse['user'] & { ein?: string }>('PUT', '/profile', body, true),
+
+// ── Payout history ──────────────────────────────────────────
+getPayouts: (limit: number = 25) =>
+  request<{ payouts: Payout[] }>('GET', `/connect/payouts?limit=${limit}`, null, true)
 };
 
 export default api;
