@@ -11,8 +11,11 @@ import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
+
 
 const WalletScreen = (): React.JSX.Element => {
+  const topInset = useTopInset();
   const { user } = useAuthContext();
   const onboardingComplete = user?.onboardingComplete ?? false;
 
@@ -127,10 +130,10 @@ const WalletScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Header ──────────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <Text style={styles.headerTitle}>Wallet</Text>
       </View>
 
@@ -314,7 +317,7 @@ const WalletScreen = (): React.JSX.Element => {
 
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: colours.background },
-  header:      { backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md, paddingTop: spacing.xl, alignItems: 'center' },
+  header:      { backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md, alignItems: 'center' },
   headerTitle: { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colours.white },
 
   listContent: { paddingHorizontal: spacing.base, paddingBottom: spacing.xxxl },

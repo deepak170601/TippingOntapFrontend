@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, Alert, ActivityIndicator, ScrollView,
+  Alert, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
 import Header from '../../components/common/Header';
@@ -44,7 +44,6 @@ const SettingsScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colours.surface} />
       <Header title="Settings" />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 

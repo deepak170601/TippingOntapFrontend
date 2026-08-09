@@ -1,7 +1,7 @@
 // src/screens/dashboard/ProfileScreen.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, StatusBar, ScrollView,
+  View, Text, StyleSheet, ScrollView,
   TextInput, TouchableOpacity, ActivityIndicator,
   Alert, Modal, FlatList, RefreshControl,
   KeyboardAvoidingView, Platform,
@@ -177,7 +177,6 @@ const ProfileScreen = (): React.JSX.Element => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StatusBar barStyle="dark-content" backgroundColor={colours.surface} />
       <Header title="Profile" />
 
       <ScrollView

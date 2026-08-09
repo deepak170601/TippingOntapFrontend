@@ -1,6 +1,7 @@
 // src/components/common/Header.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import useTopInset from '../../hooks/useTopInset';
 import { colours, fontSizes, fontWeights, spacing, shadows } from '../../theme';
 
 interface HeaderProps {
@@ -10,25 +11,32 @@ interface HeaderProps {
   rightNode?: React.ReactNode;
 }
 
-const Header = ({ title, showBack = false, onBack, rightNode }: HeaderProps): React.JSX.Element => (
-  <View style={styles.container}>
-    <View style={styles.side}>
-      {showBack && (
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.backBtn}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-    <Text style={styles.title} numberOfLines={1}>{title}</Text>
-    <View style={styles.side}>
-      {rightNode ?? null}
-    </View>
-  </View>
-);
+const Header = ({ title, showBack = false, onBack, rightNode }: HeaderProps): React.JSX.Element => {
+  const topInset = useTopInset();
+
+  return (
+    <>
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      <View style={[styles.container, { paddingTop: topInset + spacing.sm }]}>
+        <View style={styles.side}>
+          {showBack && (
+            <TouchableOpacity
+              onPress={onBack}
+              style={styles.backBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.backArrow}>←</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+        <View style={styles.side}>
+          {rightNode ?? null}
+        </View>
+      </View>
+    </>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -36,7 +44,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colours.surface,
     paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colours.border,
     ...shadows.subtle,

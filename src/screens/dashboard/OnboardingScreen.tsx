@@ -10,9 +10,11 @@ import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
 
 const OnboardingScreen = (): React.JSX.Element => {
   const { updateOnboardingStatus } = useAuthContext();
+  const topInset = useTopInset();
 
   const [loading,        setLoading]        = useState<boolean>(false);
   const [checking,       setChecking]       = useState<boolean>(false);
@@ -57,10 +59,10 @@ const OnboardingScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Header strip ────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <Text style={styles.headerTitle}>Tipping On The Go</Text>
       </View>
 
@@ -140,7 +142,6 @@ const styles = StyleSheet.create({
 
   header: {
     backgroundColor:   colours.primary,
-    paddingTop:        spacing.xl,
     paddingBottom:     spacing.md,
     paddingHorizontal: spacing.base,
     alignItems:        'center',

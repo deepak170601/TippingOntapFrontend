@@ -8,12 +8,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import api, { Event } from '../../services/api';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
 import BottomTabBar from '../../components/BottomTabBar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const ActiveEventsScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NavProp>();
+  const topInset   = useTopInset();
   const [events,     setEvents]     = useState<Event[]>([]);
   const [search,     setSearch]     = useState<string>('');
   const [loading,    setLoading]    = useState<boolean>(true);
@@ -66,8 +68,8 @@ const ActiveEventsScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
-      <View style={styles.header}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.backArrow}>‹</Text>
@@ -122,7 +124,7 @@ const ActiveEventsScreen = (): React.JSX.Element => {
 
 const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: colours.background },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md, paddingTop: spacing.xl },
+  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md },
   backBtn:      { padding: spacing.xs },
   backArrow:    { fontSize: 32, color: colours.white, lineHeight: 36 },
   headerTitle:  { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colours.white },

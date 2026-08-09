@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView,
-  TouchableOpacity, StyleSheet, StatusBar,
+  TouchableOpacity, StyleSheet,
   Animated, Keyboard,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -82,7 +82,6 @@ const AmountScreen = ({ navigation, route }: Props): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colours.surface} />
       <Header
         title="Select Tip Amount"
         showBack

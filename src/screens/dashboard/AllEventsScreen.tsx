@@ -13,6 +13,7 @@ import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
 import BottomTabBar from '../../components/BottomTabBar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -32,6 +33,7 @@ const SECTION_COLOURS = {
 
 const AllEventsScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NavProp>();
+  const topInset   = useTopInset();
   const [search,     setSearch]     = useState<string>('');
   const [upcoming,   setUpcoming]   = useState<Event[]>([]);
   const [active,     setActive]     = useState<Event[]>([]);
@@ -151,10 +153,10 @@ const AllEventsScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Header ──────────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
@@ -227,7 +229,6 @@ const styles = StyleSheet.create({
     backgroundColor:   colours.primary,
     paddingHorizontal: spacing.base,
     paddingVertical:   spacing.md,
-    paddingTop:        spacing.xl,
   },
   backBtn:     { padding: spacing.xs },
   backArrow:   { fontSize: 32, color: colours.white, lineHeight: 36 },

@@ -1,8 +1,9 @@
 // src/components/BottomTabBar.tsx
 // Persistent tab bar shown on all stack screens
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import type { RootNavigationProp } from '../navigation/AppNavigator';
 import { colours, tabBar, spacing, fontSizes } from '../theme';
@@ -24,6 +25,7 @@ const TABS: TabItem[] = [
 
 const BottomTabBar = (): React.JSX.Element => {
   const navigation = useNavigation<RootNavigationProp>();
+  const insets     = useSafeAreaInsets();
 
   const handlePress = (screen: TabItem['screen']): void => {
     navigation.navigate('Main', {
@@ -32,7 +34,15 @@ const BottomTabBar = (): React.JSX.Element => {
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingBottom: insets.bottom + 8,
+          height:        tabBar.height + insets.bottom,
+        },
+      ]}
+    >
       {TABS.map(tab => (
         <TouchableOpacity
           key={tab.screen}
@@ -60,8 +70,6 @@ const styles = StyleSheet.create({
   container: {
     flexDirection:   'row',
     backgroundColor: tabBar.background,
-    height:          tabBar.height + (Platform.OS === 'ios' ? 20 : 0),
-    paddingBottom:   Platform.OS === 'ios' ? 24 : tabBar.paddingBottom,
     borderTopWidth:  1,
     borderTopColor:  colours.border,
     elevation:       12,

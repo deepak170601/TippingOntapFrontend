@@ -9,6 +9,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
 import BottomTabBar from '../../components/BottomTabBar';
 import api from '../../services/api';
 
@@ -22,6 +23,7 @@ interface TipOption {
 
 const UpcomingEventDetailScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NavProp>();
+  const topInset   = useTopInset();
   const route      = useRoute<RouteType>();
   const event      = route.params.event;
 
@@ -71,10 +73,10 @@ const UpcomingEventDetailScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Header ──────────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
@@ -172,7 +174,7 @@ const UpcomingEventDetailScreen = (): React.JSX.Element => {
 
 const styles = StyleSheet.create({
   container:       { flex: 1, backgroundColor: colours.background },
-  header:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md, paddingTop: spacing.xl },
+  header:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md },
   backBtn:         { padding: spacing.xs },
   backArrow:       { fontSize: 32, color: colours.white, lineHeight: 36 },
   headerTitle:     { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colours.white },

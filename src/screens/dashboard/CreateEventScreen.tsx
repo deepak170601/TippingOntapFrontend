@@ -8,6 +8,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useNavigation } from '@react-navigation/native';
 import type { RootNavigationProp } from '../../navigation/AppNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
 import api from '../../services/api';
 
 type NavProp = RootNavigationProp;
@@ -56,6 +57,7 @@ const toTimeString = (d: Date): string =>
 
 const CreateEventScreen = (): React.JSX.Element => {
   const navigation  = useNavigation<NavProp>();
+  const topInset    = useTopInset();
   const [form,      setForm]      = useState<FormState>(INITIAL_FORM);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errors,    setErrors]    = useState<Partial<Record<keyof FormState, string>>>({});
@@ -151,10 +153,10 @@ const CreateEventScreen = (): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Header ──────────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
@@ -329,7 +331,7 @@ const Field = ({
 
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: colours.background },
-  header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md, paddingTop: spacing.xl },
+  header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colours.primary, paddingHorizontal: spacing.base, paddingVertical: spacing.md },
   backBtn:     { padding: spacing.xs },
   backArrow:   { fontSize: 32, color: colours.white, lineHeight: 36 },
   headerTitle: { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colours.white },

@@ -14,12 +14,15 @@ import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
+import useTopInset from '../../hooks/useTopInset';
+
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
 
 const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
   const { user }       = useAuthContext();
   const rootNavigation = useNavigation<RootNavigationProp>();
+  const topInset       = useTopInset();
 
   const [activeEvents,   setActiveEvents]   = useState<Event[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
@@ -70,10 +73,10 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colours.primary} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* ── Blue header ───────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
         <Text style={styles.headerLogo}>LOGO</Text>
         <Text style={styles.headerGreeting}>Hi {firstName}!</Text>
         <View style={styles.headerRight} />
@@ -228,7 +231,6 @@ const styles = StyleSheet.create({
     backgroundColor:   colours.primary,
     paddingHorizontal: spacing.base,
     paddingVertical:   spacing.md,
-    paddingTop:        spacing.xl,
   },
   headerLogo:     { fontSize: fontSizes.base, fontWeight: fontWeights.bold,      color: colours.white },
   headerGreeting: { fontSize: fontSizes.lg,   fontWeight: fontWeights.bold,      color: colours.white },

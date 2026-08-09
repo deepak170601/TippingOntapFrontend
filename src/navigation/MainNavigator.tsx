@@ -1,7 +1,8 @@
 // src/navigation/MainNavigator.tsx
 import React from 'react';
-import { View, Platform, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import HomeScreen        from '../screens/dashboard/HomeScreen';
 import WalletScreen      from '../screens/dashboard/WalletScreen';
@@ -26,11 +27,18 @@ const CenterTabIcon = ({ focused }: { focused: boolean }) => (
   </View>
 );
 
-const MainNavigator = (): React.JSX.Element => (
+const MainNavigator = (): React.JSX.Element => {
+  const insets = useSafeAreaInsets();
+
+  return (
   <Tab.Navigator
     screenOptions={{
       headerShown:             false,
-      tabBarStyle:             styles.tabBar,
+      tabBarStyle:             {
+        ...styles.tabBar,
+        paddingBottom: insets.bottom + 8,
+        height:        tabBar.height + insets.bottom,
+      },
       tabBarActiveTintColor:   tabBar.activeColor,
       tabBarInactiveTintColor: tabBar.inactiveColor,
       tabBarLabelStyle:        styles.label,
@@ -85,13 +93,12 @@ const MainNavigator = (): React.JSX.Element => (
       }}
     />
   </Tab.Navigator>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: tabBar.background,
-    height:          tabBar.height + (Platform.OS === 'ios' ? 20 : 0),
-    paddingBottom:   Platform.OS === 'ios' ? 24 : tabBar.paddingBottom,
     borderTopWidth:  1,
     borderTopColor:  colours.border,
     elevation:       12,
