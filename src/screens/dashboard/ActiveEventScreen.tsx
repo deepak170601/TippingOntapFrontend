@@ -124,8 +124,31 @@ const ActiveEventScreen = (): React.JSX.Element => {
 
   const handleTip = async (): Promise<void> => {
     if (!canTip || !selectedCents) { return; }
+
+    // The backend rejects a non-active event at *capture* time — after the
+    // card has already been charged. Catch it here, before anyone taps.
+    if (event.status !== 'active') {
+      Alert.alert(
+        'Event Not Active',
+        'Start this event before collecting tips.',
+      );
+      return;
+    }
+
     setIsProcessing(true);
     try {
+      // chargesEnabled is what gates taking money; payoutsEnabled only gates
+      // withdrawal. This call also nudges the backend into provisioning the
+      // Terminal location before resolveLocationId needs it.
+      const status = await api.getConnectStatus();
+      if (!status.chargesEnabled) {
+        Alert.alert(
+          'Payment Setup Incomplete',
+          'Finish your payment setup before collecting tips.',
+        );
+        return;
+      }
+
       const result = await startPayment({ amountCents: selectedCents, eventId: event.id });
       if (result.success) {
         navigation.navigate('TipResult', {
@@ -136,6 +159,11 @@ const ActiveEventScreen = (): React.JSX.Element => {
       } else {
         Alert.alert('Payment Failed', result.error ?? 'Please try again.');
       }
+    } catch (err) {
+      Alert.alert(
+        'Payment Failed',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
     } finally {
       setIsProcessing(false);
     }

@@ -1,10 +1,11 @@
 // src/screens/dashboard/WalletScreen.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet, StatusBar,
   ActivityIndicator, RefreshControl, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import api, { DailyEarning } from '../../services/api';
 import { useAuthContext } from '../../context/AuthContext';
 import {
@@ -78,7 +79,9 @@ const WalletScreen = (): React.JSX.Element => {
     setRefreshing(false);
   }, [onboardingComplete]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Refetch on every focus so a tip taken elsewhere shows up
+  // immediately — this tab stays mounted, so mount-only would go stale.
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   // ── Confirm withdraw ──────────────────────────────────────
   const handleConfirmWithdraw = async (): Promise<void> => {
@@ -199,7 +202,9 @@ const WalletScreen = (): React.JSX.Element => {
                     </View>
 
                     <Text style={styles.balanceNote}>
-                      Pending tips clear in about 2 business days.
+                      Pending tips clear in about 2 business days. Balances are
+                      net of platform and processing fees, so they run lower
+                      than total tips collected.
                     </Text>
                   </>
                 )}
@@ -218,6 +223,9 @@ const WalletScreen = (): React.JSX.Element => {
             <View style={styles.totalCard}>
               <Text style={styles.totalLabel}>Total Tips Collected</Text>
               <Text style={styles.totalAmount}>{fmt(totalAllTime)}</Text>
+              <Text style={styles.balanceNote}>
+                Gross, before fees — not the amount available to withdraw.
+              </Text>
             </View>
 
             <Text style={styles.sectionHeader}>Daily Breakdown</Text>

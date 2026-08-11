@@ -1,10 +1,10 @@
 // src/screens/dashboard/HomeScreen.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, RefreshControl,
   TouchableOpacity, StyleSheet, StatusBar,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from '../../navigation/MainNavigator';
 import type { RootNavigationProp } from '../../navigation/AppNavigator';
@@ -49,7 +49,9 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Refetch on every focus so totalProfit reflects tips taken
+  // elsewhere — this tab stays mounted, so mount-only would go stale.
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const onRefresh = () => {
     setRefreshing(true);

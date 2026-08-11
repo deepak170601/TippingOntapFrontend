@@ -42,11 +42,38 @@ const sanitize = (body: unknown): unknown => {
 };
 
 // ── Error extraction ────────────────────────────────────────────
+// The backend emits two envelope shapes:
+//   controller validation → { "message": "..." }
+//   middleware exceptions → { "code": "forbidden", "error": "..." }
+// extractError below reads both; ApiError carries the status and code
+// through so call sites can tell retryable failures from terminal ones.
 interface ErrorShape {
   message?: string;
   error?:   string;
+  code?:    string;
   title?:   string;
   errors?:  Record<string, string[]>;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?:  string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name   = 'ApiError';
+    this.status = status;
+    this.code   = code;
+  }
+
+  // Upstream Stripe failures and rate limiting are worth retrying;
+  // validation and ownership errors are not.
+  get isRetryable(): boolean {
+    return this.status === 502
+        || this.status === 429
+        || this.code === 'stripe_error'
+        || this.code === 'rate_limited';
+  }
 }
 
 const extractError = (data: ErrorShape): string | null => {
@@ -154,7 +181,12 @@ const request = async <T>(
 
   // ── Extract error message ──────────────────────────────────
   if (!response.ok) {
-    throw new Error(extractError(data ?? {}) ?? `Request failed (${response.status})`);
+    const shape = (data ?? {}) as ErrorShape;
+    throw new ApiError(
+      extractError(shape) ?? `Request failed (${response.status})`,
+      response.status,
+      shape.code,
+    );
   }
 
   return data;
