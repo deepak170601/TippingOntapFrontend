@@ -24,6 +24,21 @@ android {
         versionName "1.0"
     }
 
+    // Release credentials come from Gradle properties so the keystore itself
+    // never enters the repo. Put these four in ~/.gradle/gradle.properties
+    // (NOT android/gradle.properties, which is tracked):
+    //
+    //   TIPPING_RELEASE_STORE_FILE=C:/keys/tippingonthego-release.keystore
+    //   TIPPING_RELEASE_STORE_PASSWORD=...
+    //   TIPPING_RELEASE_KEY_ALIAS=tippingonthego
+    //   TIPPING_RELEASE_KEY_PASSWORD=...
+    //
+    // Generate the keystore once and back it up. Losing it means never being
+    // able to publish an update to the same listing again:
+    //
+    //   keytool -genkeypair -v -storetype PKCS12 \
+    //     -keystore tippingonthego-release.keystore \
+    //     -alias tippingonthego -keyalg RSA -keysize 2048 -validity 10000
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -31,18 +46,53 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (project.hasProperty('TIPPING_RELEASE_STORE_FILE')) {
+                storeFile     file(TIPPING_RELEASE_STORE_FILE)
+                storePassword TIPPING_RELEASE_STORE_PASSWORD
+                keyAlias      TIPPING_RELEASE_KEY_ALIAS
+                keyPassword   TIPPING_RELEASE_KEY_PASSWORD
+            }
+        }
     }
 
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Metro serves the dev bundle over plain http on the LAN.
             manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
-            signingConfig signingConfigs.debug
+            // Tap to Pay device attestation and the Play Store both reject a
+            // debug-signed release. The fallback below exists only so that
+            // assembleRelease still runs before the keystore is configured;
+            // an APK produced that way must not be distributed. See the
+            // task-graph warning at the bottom of this file.
+            if (project.hasProperty('TIPPING_RELEASE_STORE_FILE')) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            manifestPlaceholders = [usesCleartextTraffic: "true"]
+            // The backend is https-only, so a shipped build has no reason to
+            // be reaching a cleartext host.
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+        }
+    }
+}
+
+// Warn once, and only when a release task is actually going to run, so that
+// everyday debug builds stay quiet.
+if (!project.hasProperty('TIPPING_RELEASE_STORE_FILE')) {
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.allTasks.any { it.name.contains('Release') }) {
+            logger.warn(
+                '\n*** WARNING: this release build is DEBUG-SIGNED.\n' +
+                '*** TIPPING_RELEASE_STORE_FILE is not set, so it fell back to debug.keystore.\n' +
+                '*** Tap to Pay attestation will likely refuse it and Play will not accept the upload.\n' +
+                '*** See the signingConfigs comment in android/app/build.gradle.\n'
+            )
         }
     }
 }

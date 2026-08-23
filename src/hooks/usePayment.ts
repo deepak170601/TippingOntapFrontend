@@ -27,16 +27,66 @@ interface PaymentResult {
   paymentIntentId?: string;
 }
 
-// Fakes the whole flow with timers and never contacts the backend, so
-// no tip is recorded and earnings stay flat. UI-only work; leave false.
-const MOCK_MODE = false;
+// ── PRODUCTION ────────────────────────────────────────────────
+// Every test-only path in this file is commented out. What runs is the
+// real one: real NFC hardware, a real tap, a real PaymentIntent against
+// whichever Stripe account the connection token is scoped to. Point the
+// backend at live keys and this moves real money.
+//
+// The disabled blocks are kept verbatim rather than deleted so that going
+// back to a bench build is a matter of uncommenting, not of rewriting from
+// memory. Each is marked DISABLED (test only) and there are four, in this
+// order: the switches below, runMockPayment, the `simulated` flag passed to
+// discoverReaders, and the setSimulatedCard call before step 5. The last
+// two are one unit — a simulated card with `simulated: false` discovery
+// connects to real hardware that then has no card to present.
+//
+// Nothing is gated on __DEV__ any more, so a debug build now takes exactly
+// the same path as a release build. That is the point: what you tap on the
+// bench is literally the shipped code. See STRIPE_LIVE_CUTOVER.md for the
+// backend half of the cutover.
+// ──────────────────────────────────────────────────────────────
+
+/* DISABLED (test only) — mock + simulated-reader switches.
+
+declare const __DEV__: boolean;
+
+// Fakes the whole flow with timers and never contacts the backend, so no
+// tip is recorded and earnings stay flat. UI-only work.
+const MOCK_MODE_IN_DEV: boolean = false;
+const MOCK_MODE = __DEV__ && MOCK_MODE_IN_DEV;
 
 // false = real Tap to Pay against the phone's NFC hardware. Works in
-// Stripe test mode on a supported device (Android 11+), so you can tap a
-// real contactless card and it will not be charged.
-// true  = Stripe's simulated reader: no card, no tap, runs on an emulator.
+// Stripe test mode on a supported device (Android 11+), so a real
+// contactless card can be tapped and will not be charged.
+// true  = Stripe's simulated reader: no card and no tap needed, but the
+// NFC check still runs, so it wants a real phone with NFC switched on.
 // Either way the PaymentIntent is real, so the backend records the tip.
-const SIMULATED_READER = false;
+//
+// Simulated readers exist only in test mode: a connection token minted
+// from a live secret key refuses to connect one.
+const SIMULATE_READER_IN_DEV: boolean = true;
+const SIMULATED_READER = __DEV__ && SIMULATE_READER_IN_DEV;
+
+// Which card the simulated reader presents. Read only when SIMULATED_READER
+// is true; real hardware reads whatever is tapped. The failing cards are
+// rejected at confirmPaymentIntent, not at collect, so they exercise the
+// same path a real decline takes — down to ActiveEventScreen's alert.
+const SIMULATED_CARDS = {
+  visa:              '4242424242424242',
+  visaDebit:         '4000056655665556',
+  mastercard:        '5555555555554444',
+  amex:              '378282246310005',
+  declined:          '4000000000000002',
+  insufficientFunds: '4000000000009995',
+  lostCard:          '4000000000009987',
+  expiredCard:       '4000000000000069',
+  processingError:   '4000000000000119',
+} as const;
+
+const ACTIVE_SIMULATED_CARD: keyof typeof SIMULATED_CARDS = 'visa';
+
+*/
 
 const usePayment = () => {
   // Readers arrive via this callback, not as a return value of
@@ -116,7 +166,8 @@ const usePayment = () => {
     }
   };
 
-  // ── Mock payment ───────────────────────────────────────────
+  /* DISABLED (test only) — ── Mock payment ──────────────────────
+
   const runMockPayment = useCallback(async (): Promise<PaymentResult> => {
     const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
@@ -139,6 +190,8 @@ const usePayment = () => {
     return { success: true, paymentIntentId: 'mock_pi_demo_123' };
   }, []);
 
+  */
+
   // ── Real payment ───────────────────────────────────────────
   const runRealPayment = useCallback(async (
     { amountCents, eventId }: StartPaymentArgs,
@@ -146,19 +199,19 @@ const usePayment = () => {
     setErrorMessage('');
 
     try {
-      // 1. Check NFC before anything else — skipped when simulating,
-      //    since emulators have no NFC and would fail here.
-      if (!SIMULATED_READER) {
-        setPaymentState('checking_nfc');
-        await checkNfc();
-      }
+      // 1. Check NFC before anything else — step 5 reads the card through
+      //    it, so a phone with NFC switched off should be told now rather
+      //    than once a PaymentIntent already exists on the account.
+      setPaymentState('checking_nfc');
+      await checkNfc();
 
       // 2. Discover phone's NFC reader
       setPaymentState('discovering');
       discoveredRef.current = [];
       await stripeHooks.discoverReaders({
         discoveryMethod: 'tapToPay',
-        simulated:       SIMULATED_READER,
+        // DISABLED (test only): simulated: SIMULATED_READER,
+        simulated: false,
       });
 
       // 3. Connect
@@ -189,7 +242,24 @@ const usePayment = () => {
         await stripeHooks.retrievePaymentIntent(intentData.clientSecret);
       if (retrieveError) { throw new Error(retrieveError.message); }
 
-      // 5. Collect — customer taps card here
+      // DISABLED (test only) — a simulated reader has no card to read, so it
+      // has to be handed one. Must run after connectReader: the setting lives
+      // on the connected reader, not on the SDK. Re-enable only together with
+      // `simulated: true` on discoverReaders above.
+      //
+      // if (SIMULATED_READER) {
+      //   // Loud on purpose: a tap that looks successful in logcat should
+      //   // never be mistaken for one that actually read a card.
+      //   console.warn(
+      //     `[payment] SIMULATED reader — presenting "${ACTIVE_SIMULATED_CARD}"; no real card is read`,
+      //   );
+      //   const { error: simCardError } = await stripeHooks.setSimulatedCard(
+      //     SIMULATED_CARDS[ACTIVE_SIMULATED_CARD],
+      //   );
+      //   if (simCardError) { throw new Error(simCardError.message); }
+      // }
+
+      // 5. Collect — customer taps their card against the phone here.
       setPaymentState('collecting');
       const { paymentIntent: collected, error: collectError } =
         await stripeHooks.collectPaymentMethod({ paymentIntent: intent! });
@@ -224,9 +294,9 @@ const usePayment = () => {
   const startPayment = useCallback(async (
     args: StartPaymentArgs,
   ): Promise<PaymentResult> => {
-    if (MOCK_MODE) { return runMockPayment(); }
+    // DISABLED (test only): if (MOCK_MODE) { return runMockPayment(); }
     return runRealPayment(args);
-  }, [runMockPayment, runRealPayment]);
+  }, [runRealPayment]);
 
   // ── Status messages ────────────────────────────────────────
   const STATUS_MESSAGES: Record<PaymentState, string> = {

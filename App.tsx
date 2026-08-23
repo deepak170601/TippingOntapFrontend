@@ -18,6 +18,12 @@ import DeepLinkHandler from './src/components/DeepLinkHandler';
 
 type PermissionStatus = 'loading' | 'granted' | 'denied';
 
+// Diagnostics only — this does not change payment behaviour. Verbose
+// Terminal logging prints reader-session and card-present detail straight
+// to logcat, which is useful on the bench and noise a shipped build should
+// not be writing to a shared log buffer.
+declare const __DEV__: boolean;
+
 export default function App(): React.JSX.Element {
   const [permStatus, setPermStatus] = useState<PermissionStatus>('loading');
 
@@ -84,7 +90,7 @@ export default function App(): React.JSX.Element {
       <AuthProvider>
         <DeepLinkHandler />
         <StripeTerminalProvider
-          logLevel="verbose"
+          logLevel={__DEV__ ? 'verbose' : 'error'}
           tokenProvider={fetchConnectionToken}
         >
           <AppNavigator />

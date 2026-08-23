@@ -10,7 +10,7 @@ import type { Event } from '../../services/api';
 interface Props { event: Event; }
 
 const PastEventCard = ({ event }: Props): React.JSX.Element => {
-  const tipsFormatted = ((event.totalTips ?? 0) / 100).toLocaleString('en-US', {
+  const tipsFormatted = ((event.totalAmount ?? 0) / 100).toLocaleString('en-US', {
     style: 'currency', currency: 'USD',
   });
 

@@ -1,6 +1,9 @@
 package com.tippingonthego
 
 import android.app.Application
+import android.os.Build
+import android.util.Log
+import android.webkit.WebView
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -25,15 +28,33 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
 
-    // Tap to Pay runs the contactless kernel in its own isolated process
-    // (:stripetaptopay), and Android instantiates this Application there too.
-    // Booting React Native inside that process wedges it, so the AIDL service
-    // the main process talks to never comes up — the tap then dies with
-    // "Failed to send request to AIDL server". Bail out before any init.
-    if (TapToPay.isInTapToPayProcess()) { return }
+    // Tap to Pay runs its contactless kernel in a second process
+    // (:stripetaptopay), and Android builds this Application there too — so
+    // without a guard everything below runs twice, once in a process that
+    // needs none of it.
+    //
+    // Two processes of one app may not share a WebView data directory. If both
+    // reach for one the loser is killed, and that takes down the AIDL service
+    // the main process drives the card reader through — which surfaces as
+    // "Failed to send request to AIDL server" the moment a card is tapped.
+    // So give that process a directory of its own before anything can load a
+    // WebView there, then skip our own startup entirely.
+    if (TapToPay.isInTapToPayProcess()) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        try {
+          WebView.setDataDirectorySuffix("stripetaptopay")
+        } catch (e: IllegalStateException) {
+          // Something already loaded a WebView here, so the directory is
+          // fixed for this process and there is nothing left to claim.
+          Log.w("MainApplication", "WebView data dir already in use", e)
+        }
+      }
+      return
+    }
 
-    // Wires up the Terminal SDK's application-level lifecycle. Without it the
-    // SDK never binds to that process at all.
+    // The RN module already calls this on every initialize(), so it is
+    // belt-and-braces — but it is what Stripe's own setup installs, and it
+    // is idempotent.
     TerminalApplicationDelegate.onCreate(this)
 
     loadReactNative(this)
