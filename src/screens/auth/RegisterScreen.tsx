@@ -11,7 +11,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
 import { US_STATES, USState } from '../../constants/usStates';
-import api from '../../services/api';
+import api, { ApiError } from '../../services/api';
 import  useAuth from '../../hooks/useAuth';
 import {Image} from 'react-native';
 
@@ -153,6 +153,7 @@ const RegisterScreen = (): React.JSX.Element => {
   // ── Send email OTP ────────────────────────────────────────
   const handleSendEmailOtp = async (): Promise<void> => {
     if (!form.email.includes('@')) { setErrors(e => ({ ...e, email: 'Enter a valid email.' })); return; }
+    setErrors(e => ({ ...e, email: undefined }));
     setEmailOtpLoading(true);
     try {
       await api.sendEmailOtp(form.email.trim());
@@ -161,6 +162,16 @@ const RegisterScreen = (): React.JSX.Element => {
       setShowEmailOtp(true);
       setTimeout(() => emailInputRefs.current[0]?.focus(), 300);
     } catch (err) {
+      // 409 means the address already has an account. It belongs on the email
+      // field, not in a modal: the merchant has to edit that field to continue,
+      // and an alert they dismiss leaves the screen looking unchanged. The
+      // backend now reports this here rather than at /auth/register, which is
+      // the whole point — it used to surface only after the entire form was
+      // filled in and both codes verified.
+      if (err instanceof ApiError && err.status === 409) {
+        setErrors(e => ({ ...e, email: err.message }));
+        return;
+      }
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send code.');
     } finally {
       setEmailOtpLoading(false);
@@ -188,6 +199,14 @@ const RegisterScreen = (): React.JSX.Element => {
       setEmailVerified(true);
       setShowEmailOtp(false);
     } catch (err) {
+      // Someone else can finish signing up with this address during the ten
+      // minutes the code stays valid. Close the dialog and send them back to the
+      // field — retyping the code cannot fix an address that is now taken.
+      if (err instanceof ApiError && err.status === 409) {
+        setShowEmailOtp(false);
+        setErrors(e => ({ ...e, email: err.message }));
+        return;
+      }
       Alert.alert('Failed', err instanceof Error ? err.message : 'Invalid code.');
       setEmailOtp(Array(OTP_LENGTH).fill(''));
       emailInputRefs.current[0]?.focus();
