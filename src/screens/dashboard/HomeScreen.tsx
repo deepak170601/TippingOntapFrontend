@@ -15,6 +15,7 @@ import {
   spacing, radius, shadows,
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
+import PayoutSetupBanner from '../../components/PayoutSetupBanner';
 
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
@@ -108,6 +109,10 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
           />
         }
       >
+        {/* ── Payouts not enabled yet ────────────────────── */}
+        {/* Renders nothing unless the merchant can collect but not withdraw. */}
+        <PayoutSetupBanner />
+
         {/* ── Upcoming Events card ───────────────────────── */}
         <View style={styles.upcomingCard}>
           <View style={styles.upcomingGradientA} />

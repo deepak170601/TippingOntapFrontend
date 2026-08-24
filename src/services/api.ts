@@ -252,6 +252,17 @@ export interface WalletData {
   days:         DailyEarning[];
 }
 
+// ── Stripe Connect status ─────────────────────────────────────
+export interface ConnectStatus {
+  onboardingComplete:    boolean;
+  chargesEnabled:        boolean;
+  payoutsEnabled:        boolean;
+  canCollectTips:        boolean;
+  applicationFeePercent: number;
+  minTipAmount:          number;   // cents
+  maxTipAmount:          number;   // cents
+}
+
 // ── Terminal ──────────────────────────────────────────────────
 export interface ConnectionToken   { secret: string; }
 export interface PaymentIntentData { id: string; clientSecret: string; }
@@ -360,17 +371,21 @@ export const api = {
   getOnboardingLink: () =>
     request<{ url: string }>('POST', '/connect/onboard', null, true),
 
+  // The three onboarding flags are not interchangeable:
+  //   canCollectTips     — gate the tip flow on this. Stripe enables charges as
+  //                        soon as identity clears, which is often the same day.
+  //   payoutsEnabled     — gate withdrawing on this. Arrives later, after the
+  //                        bank account is verified separately.
+  //   onboardingComplete — both of the above. The last state to arrive, and the
+  //                        wrong thing to make someone wait for before earning.
   getConnectStatus: () =>
-    request<{
-      onboardingComplete: boolean;
-      chargesEnabled:     boolean;
-      payoutsEnabled:     boolean;
-    }>('GET', '/connect/status', null, true),
+    request<ConnectStatus>('GET', '/connect/status', null, true),
 
   getConnectBalance: () =>
     request<{
-      available: number;  // cents
-      pending:   number;  // cents
+      available:      number;   // cents
+      pending:        number;   // cents
+      payoutsEnabled: boolean;  // false → money is held, not lost
     }>('GET', '/connect/balance', null, true),
 
   withdraw: (amountCents?: number) =>

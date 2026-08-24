@@ -55,12 +55,12 @@ const UnauthenticatedNavigator = (): React.JSX.Element => (
   </AuthRoot.Navigator>
 );
 
-// ── Onboarding gate — authenticated but not yet onboarded ────
+// ── Onboarding gate — cannot take a card yet ─────────────────
 // Only shows OnboardingScreen. No back button, no way to skip.
-// When updateOnboardingStatus(true) is called from OnboardingScreen,
-// user.onboardingComplete flips in AuthContext → AppNavigator
-// re-renders automatically → AuthenticatedNavigator mounts.
-// No navigate() call needed.
+// When refreshConnectStatus() sees charges enabled — from the deep link back
+// out of Stripe, from "Check My Status", or from the app returning to the
+// foreground — canCollectTips flips in AuthContext → AppNavigator re-renders
+// automatically → AuthenticatedNavigator mounts. No navigate() call needed.
 const OnboardingNavigator = (): React.JSX.Element => (
   <OnboardingRoot.Navigator screenOptions={{ headerShown: false }}>
     <OnboardingRoot.Screen name="Onboarding" component={OnboardingScreen} />
@@ -116,9 +116,23 @@ const AuthenticatedNavigator = (): React.JSX.Element => (
 
 // ── Root navigator ────────────────────────────────────────────
 const AppNavigator = (): React.JSX.Element => {
-  const { isAuthenticated, isLoading, user } = useAuthContext();
+  const { isAuthenticated, isLoading, canCollectTips } = useAuthContext();
 
-  const onboardingComplete = user?.onboardingComplete ?? false;
+  // Gated on canCollectTips, NOT onboardingComplete.
+  //
+  // onboardingComplete is charges_enabled AND payouts_enabled. Stripe turns
+  // charges on as soon as identity clears, and payouts on later once the bank
+  // account is verified separately — so gating the whole app on both left a
+  // merchant Stripe was willing to let trade stuck on the onboarding screen,
+  // sometimes for days, while customers stood there waiting to tip.
+  //
+  // ActiveEventScreen already checked chargesEnabled before starting a payment.
+  // That check was right; it was simply unreachable, because nobody got past
+  // this component to run it.
+  //
+  // "Can collect, cannot withdraw" is a normal middle state rather than a
+  // broken one, and is handled inside the app by PayoutSetupBanner instead of
+  // by keeping the merchant out.
 
   if (isLoading) {
     return (
@@ -131,8 +145,8 @@ const AppNavigator = (): React.JSX.Element => {
   return (
     <NavigationContainer>
       {!isAuthenticated && <UnauthenticatedNavigator />}
-      {isAuthenticated && !onboardingComplete && <OnboardingNavigator />}
-      {isAuthenticated &&  onboardingComplete && <AuthenticatedNavigator />}
+      {isAuthenticated && !canCollectTips && <OnboardingNavigator />}
+      {isAuthenticated &&  canCollectTips && <AuthenticatedNavigator />}
     </NavigationContainer>
   );
 };

@@ -4,35 +4,35 @@
 import { useEffect } from 'react';
 import { Linking }   from 'react-native';
 import { useAuthContext } from '../context/AuthContext';
-import api from '../services/api';
 
 const DeepLinkHandler = (): null => {
-  const { updateOnboardingStatus } = useAuthContext();
+  const { refreshConnectStatus } = useAuthContext();
 
   useEffect(() => {
     const handleUrl = async ({ url }: { url: string }): Promise<void> => {
 
       // ── Professional returned from Stripe onboarding ───────
       if (url.includes('connect/return')) {
-        try {
-          const status = await api.getConnectStatus();
-          if (status.onboardingComplete) {
-            // Flips user.onboardingComplete in AuthContext →
-            // AppNavigator re-renders → AuthenticatedNavigator mounts.
-            // No navigate() call needed.
-            updateOnboardingStatus(true);
-          }
-          // If not complete: OnboardingScreen stays visible.
-          // User can tap "Check My Status" for a status message.
-        } catch {
-          // Silent fail — user manually checks on OnboardingScreen.
-        }
+        // refreshConnectStatus writes canCollectTips into AuthContext →
+        // AppNavigator re-renders → AuthenticatedNavigator mounts. No
+        // navigate() call needed, and no branching needed here either.
+        //
+        // This used to check onboardingComplete and only then let the merchant
+        // in, which is the wrong moment: they land back here the instant Stripe
+        // verifies their identity, which is exactly when charges switch on and
+        // typically well before payouts do. Waiting for both bounced them
+        // straight back to the onboarding screen at the moment they had in fact
+        // become able to earn.
+        //
+        // Failure is silent by design — the merchant can still tap "Check My
+        // Status" on the onboarding screen.
+        await refreshConnectStatus();
         return;
       }
 
       // ── AccountLink expired — Stripe sends here ────────────
       if (url.includes('connect/refresh')) {
-        // onboardingComplete is still false → OnboardingScreen still showing.
+        // canCollectTips is still false → OnboardingScreen still showing.
         // "Complete Setup" will request a fresh link automatically.
         // No action needed.
       }
@@ -47,7 +47,7 @@ const DeepLinkHandler = (): null => {
     });
 
     return () => subscription.remove();
-  }, [updateOnboardingStatus]);
+  }, [refreshConnectStatus]);
 
   return null;
 };

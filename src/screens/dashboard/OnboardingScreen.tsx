@@ -13,7 +13,7 @@ import {
 import useTopInset from '../../hooks/useTopInset';
 
 const OnboardingScreen = (): React.JSX.Element => {
-  const { updateOnboardingStatus } = useAuthContext();
+  const { refreshConnectStatus } = useAuthContext();
   const topInset = useTopInset();
 
   const [loading,        setLoading]        = useState<boolean>(false);
@@ -42,11 +42,26 @@ const OnboardingScreen = (): React.JSX.Element => {
     setError(null);
     setStatusMessage(null);
     try {
-      const result = await api.getConnectStatus();
-      if (result.onboardingComplete) {
-        // Update context — AppNavigator reacts automatically
-        updateOnboardingStatus(true);
+      // Three outcomes now, not two, and the middle one is the whole point:
+      // charges switch on when identity clears, payouts later when the bank
+      // account is verified, and a merchant sitting between the two can
+      // already earn. Telling them "not yet complete, finish in the browser"
+      // was both wrong and discouraging at the exact moment they had become
+      // able to take money.
+      //
+      // refreshConnectStatus updates AuthContext, so on either of the first two
+      // branches AppNavigator swaps in the real app on its own.
+      const status = await refreshConnectStatus();
+
+      if (!status) {
+        setStatusMessage('Could not reach Stripe just now. Please try again.');
+      } else if (status.canCollectTips && status.payoutsEnabled) {
         setStatusMessage('Setup complete! Taking you to the app…');
+      } else if (status.canCollectTips) {
+        setStatusMessage(
+          'You can start collecting tips now. Add a bank account when you get a ' +
+          'moment so you can withdraw — your tips are held safely until then.',
+        );
       } else {
         setStatusMessage('Setup not yet complete. Please finish in the browser.');
       }

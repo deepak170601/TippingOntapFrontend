@@ -13,12 +13,17 @@ import {
   spacing, radius, shadows,
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
+import PayoutSetupBanner from '../../components/PayoutSetupBanner';
 
 
 const WalletScreen = (): React.JSX.Element => {
   const topInset = useTopInset();
-  const { user } = useAuthContext();
-  const onboardingComplete = user?.onboardingComplete ?? false;
+
+  // canCollectTips gates whether there is a balance to show at all;
+  // payoutsEnabled gates whether it can be moved. Splitting them is what lets
+  // this screen show a real, growing balance to a merchant who has not
+  // finished onboarding — previously it showed them a padlock.
+  const { canCollectTips, payoutsEnabled } = useAuthContext();
 
   // ── Daily earnings (existing) ─────────────────────────────
   const [totalAllTime, setTotalAllTime] = useState<number>(0);
@@ -44,8 +49,11 @@ const WalletScreen = (): React.JSX.Element => {
   const loadData = useCallback(async (): Promise<void> => {
     setBalanceError(null);
 
+    // Fetch on canCollectTips, not onboardingComplete. The merchant who most
+    // needs this number — collecting tips, bank account not verified yet — was
+    // exactly the one this used to skip. The backend no longer refuses the call.
     const walletPromise  = api.getWallet();
-    const balancePromise = onboardingComplete
+    const balancePromise = canCollectTips
       ? api.getConnectBalance()
       : Promise.resolve(null);
 
@@ -77,7 +85,7 @@ const WalletScreen = (): React.JSX.Element => {
     setLoading(false);
     setBalanceLoading(false);
     setRefreshing(false);
-  }, [onboardingComplete]);
+  }, [canCollectTips]);
 
   // Refetch on every focus so a tip taken elsewhere shows up
   // immediately — this tab stays mounted, so mount-only would go stale.
@@ -128,8 +136,11 @@ const WalletScreen = (): React.JSX.Element => {
     }
   };
 
+  // payoutsEnabled is the new term here. It is the one reason for the button
+  // being disabled that the merchant can actually do something about, so it
+  // gets said out loud rather than left as a greyed-out button.
   const withdrawDisabled =
-    availableBalance === 0 || balanceLoading || withdrawLoading;
+    !payoutsEnabled || availableBalance === 0 || balanceLoading || withdrawLoading;
 
   return (
     <View style={styles.container}>
@@ -154,8 +165,14 @@ const WalletScreen = (): React.JSX.Element => {
         }
         ListHeaderComponent={
           <>
+            {/* ── Payouts not enabled yet ────────────────── */}
+            {/* Renders nothing unless collecting is on and withdrawing is not. */}
+            <PayoutSetupBanner />
+
             {/* ── Connect balance card ──────────────────── */}
-            {onboardingComplete ? (
+            {/* Shown on canCollectTips: a real balance is never hidden behind
+                a padlock just because the bank account is still pending. */}
+            {canCollectTips ? (
               <View style={styles.balanceCard}>
                 <Text style={styles.balanceCardTitle}>Your Balance</Text>
 
@@ -200,6 +217,16 @@ const WalletScreen = (): React.JSX.Element => {
                         {fmt(pendingBalance)}
                       </Text>
                     </View>
+
+                    {/* Say why the button is dead. A greyed-out Withdraw with
+                        a real balance next to it reads as a bug, and the one
+                        cause the merchant can act on is this one. */}
+                    {!payoutsEnabled && (
+                      <Text style={styles.payoutsPendingNote}>
+                        Withdrawals open once you add and verify a bank account.
+                        Your tips are safe in the meantime.
+                      </Text>
+                    )}
 
                     <Text style={styles.balanceNote}>
                       Pending tips clear in about 2 business days. Balances are
@@ -351,6 +378,16 @@ const styles = StyleSheet.create({
   pendingRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colours.border },
   pendingAmount:    { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.textSecondary },
   balanceNote:      { fontSize: fontSizes.xs, color: colours.textSecondary, marginTop: spacing.sm, fontStyle: 'italic' },
+
+  // Deliberately not italic and not muted like balanceNote — this one is the
+  // answer to "why can't I withdraw?", so it should read as information rather
+  // than fine print.
+  payoutsPendingNote: {
+    fontSize:        fontSizes.sm,
+    color:           colours.textPrimary,
+    marginTop:       spacing.sm,
+    lineHeight:      18,
+  },
 
   withdrawBtn: {
     backgroundColor:   colours.primary,
