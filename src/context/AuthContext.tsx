@@ -5,7 +5,7 @@ import React, {
 } from 'react';
 import { Alert, AppState } from 'react-native';
 import storage, { ConnectSnapshot } from '../services/storage';
-import api, { AuthResponse } from '../services/api';
+import api, { AuthResponse, ConnectStatus } from '../services/api';
 import { registerSessionExpiredHandler } from '../services/api';
 
 export interface User {
@@ -51,9 +51,16 @@ interface AuthContextType {
   // no longer had to match what was charged.
   applicationFeePercent: number | null;
 
-  // Re-reads GET /connect/status. Returns the fresh snapshot so a caller that
+  // The last full GET /connect/status response, including what Stripe is
+  // waiting for. Held in memory only — the persisted snapshot deliberately
+  // keeps just the two flags, because requirements change as the merchant acts
+  // on them and a cached list would send someone to re-upload a document they
+  // already fixed. Null until the first refresh of this session lands.
+  connectStatus: ConnectStatus | null;
+
+  // Re-reads GET /connect/status. Returns the full response so a caller that
   // needs to branch on the result does not have to wait for a re-render.
-  refreshConnectStatus: () => Promise<ConnectSnapshot | null>;
+  refreshConnectStatus: () => Promise<ConnectStatus | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -62,6 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user,      setUser]    = useState<User | null>(null);
   const [isLoading, setLoading] = useState<boolean>(true);
   const [connect,   setConnect] = useState<ConnectSnapshot | null>(null);
+  const [status,    setStatus]  = useState<ConnectStatus | null>(null);
 
   // ── Restore session on app launch ─────────────────────────
   // The cached Connect snapshot is restored alongside the user so the very
@@ -98,6 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await api.logout();
     setUser(null);
     setConnect(null);   // scoped to one Stripe account — never outlive the session
+    setStatus(null);
   }, []);
 
   // ── Global SESSION_EXPIRED handler ────────────────────────
@@ -108,6 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await storage.clearAll();
       setUser(null);
       setConnect(null);
+      setStatus(null);
       Alert.alert(
         'Session Expired',
         'Please sign in again to continue.',
@@ -116,14 +126,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ── Connect status ────────────────────────────────────────
-  const refreshConnectStatus = useCallback(async (): Promise<ConnectSnapshot | null> => {
+  const refreshConnectStatus = useCallback(async (): Promise<ConnectStatus | null> => {
     try {
-      const status = await api.getConnectStatus();
+      const fresh = await api.getConnectStatus();
+
+      // Full response in memory, minimal snapshot to disk. Requirements are
+      // deliberately not persisted: they change as the merchant acts on them,
+      // and a stale list would tell someone to re-upload a document they have
+      // already fixed.
+      setStatus(fresh);
 
       const snapshot: ConnectSnapshot = {
-        canCollectTips:        status.canCollectTips,
-        payoutsEnabled:        status.payoutsEnabled,
-        applicationFeePercent: status.applicationFeePercent,
+        canCollectTips:        fresh.canCollectTips,
+        payoutsEnabled:        fresh.payoutsEnabled,
+        applicationFeePercent: fresh.applicationFeePercent,
       };
 
       setConnect(snapshot);
@@ -133,13 +149,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // the app still reads for "fully finished". Keep it in step here so the
       // two cannot disagree after a refresh.
       setUser(prev => {
-        if (!prev || prev.onboardingComplete === status.onboardingComplete) { return prev; }
-        const updated = { ...prev, onboardingComplete: status.onboardingComplete };
+        if (!prev || prev.onboardingComplete === fresh.onboardingComplete) { return prev; }
+        const updated = { ...prev, onboardingComplete: fresh.onboardingComplete };
         storage.saveUser(updated);
         return updated;
       });
 
-      return snapshot;
+      return fresh;
     } catch {
       // Offline, or the call failed. Keep whatever we had — a merchant who
       // could collect a minute ago should not be thrown back to onboarding
@@ -220,6 +236,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       canCollectTips,
       payoutsEnabled,
       applicationFeePercent,
+      connectStatus: status,
       refreshConnectStatus,
     }}>
       {children}

@@ -11,9 +11,10 @@ import {
   spacing, radius, shadows,
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
+import ConnectRequirementsList from '../../components/ConnectRequirementsList';
 
 const OnboardingScreen = (): React.JSX.Element => {
-  const { refreshConnectStatus } = useAuthContext();
+  const { refreshConnectStatus, connectStatus } = useAuthContext();
   const topInset = useTopInset();
 
   const [loading,        setLoading]        = useState<boolean>(false);
@@ -98,6 +99,12 @@ const OnboardingScreen = (): React.JSX.Element => {
           one-time setup with our payment partner, Stripe.
         </Text>
         <Text style={styles.timeNote}>This takes about 2 minutes.</Text>
+
+        {/* ── What Stripe is waiting for ───────────────── */}
+        {/* Renders nothing on a fresh account with no requirements reported
+            yet. For a merchant who is stuck, this is the difference between
+            "incomplete" and "upload a photo of your ID". */}
+        <ConnectRequirementsList status={connectStatus} />
 
         {/* ── Complete Setup button ────────────────────── */}
         <TouchableOpacity

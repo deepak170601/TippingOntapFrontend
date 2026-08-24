@@ -23,9 +23,10 @@ import api from '../services/api';
 import {
   colours, fontSizes, fontWeights, spacing, radius,
 } from '../theme';
+import ConnectRequirementsList from './ConnectRequirementsList';
 
 const PayoutSetupBanner = (): React.JSX.Element | null => {
-  const { canCollectTips, payoutsEnabled } = useAuthContext();
+  const { canCollectTips, payoutsEnabled, connectStatus } = useAuthContext();
 
   const [held,    setHeld]    = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -96,6 +97,12 @@ const PayoutSetupBanner = (): React.JSX.Element | null => {
           )}
         </View>
       </View>
+
+      {/* Exactly what Stripe is waiting for, when it knows. Usually just the
+          bank account — but if verification also bounced, saying so here is
+          what stops the merchant tapping "Finish payment setup" repeatedly
+          without ever learning why it did not take. */}
+      <ConnectRequirementsList status={connectStatus} />
 
       <TouchableOpacity
         style={[styles.button, loading && styles.buttonDisabled]}

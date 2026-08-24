@@ -253,6 +253,24 @@ export interface WalletData {
 }
 
 // ── Stripe Connect status ─────────────────────────────────────
+
+// One thing Stripe is waiting for. `label` is already written for the merchant
+// by the backend — Stripe's own value is a dotted field path like
+// "individual.verification.document", which is carried in `code` for support
+// and logging. Render label, never code.
+export interface ConnectRequirement {
+  code:  string;
+  label: string;
+}
+
+// Why a previous submission was rejected. `reason` is Stripe's own end-user
+// wording, e.g. "The document could not be read. Please upload a clearer photo."
+export interface ConnectRequirementError {
+  requirement: string;
+  code:        string;
+  reason:      string;
+}
+
 export interface ConnectStatus {
   onboardingComplete:    boolean;
   chargesEnabled:        boolean;
@@ -261,6 +279,17 @@ export interface ConnectStatus {
   applicationFeePercent: number;
   minTipAmount:          number;   // cents
   maxTipAmount:          number;   // cents
+
+  // What Stripe still needs. An empty list with pendingReview true is the
+  // opposite situation from an empty list with everything enabled: it means
+  // the merchant has submitted everything and Stripe is reviewing it, so the
+  // right thing to tell them is to wait, not to go looking for a form.
+  currentlyDue:      ConnectRequirement[];
+  hasPastDue:        boolean;
+  pendingReview:     boolean;
+  disabledReason:    string | null;
+  currentDeadline:   string | null;   // ISO date
+  requirementErrors: ConnectRequirementError[];
 }
 
 // ── Terminal ──────────────────────────────────────────────────
