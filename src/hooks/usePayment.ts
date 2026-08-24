@@ -205,14 +205,40 @@ const usePayment = () => {
       setPaymentState('checking_nfc');
       await checkNfc();
 
-      // 2. Discover phone's NFC reader
+      // 2. Make sure the SDK is actually up, then discover the phone's own
+      //    reader. StripeTerminalInit starts initialization on login, but
+      //    it is async and it has to reach the backend, so a merchant can
+      //    arrive here before it lands — or after it failed outright, with
+      //    nothing anywhere to retry it. Re-initializing on demand is what
+      //    turns "payments are dead until you restart the app" into a
+      //    one-tap recovery.
+      //
+      //    getIsInitialized() reads a live ref. The isInitialized boolean
+      //    the hook also returns is captured in a memo that does not list
+      //    the ref as a dependency, so it goes stale — do not use it.
       setPaymentState('discovering');
+
+      if (!stripeHooks.getIsInitialized()) {
+        const { error: initError } = await stripeHooks.initialize();
+        if (initError) {
+          throw new Error(`Payment system unavailable: ${initError.message}`);
+        }
+      }
+
       discoveredRef.current = [];
-      await stripeHooks.discoverReaders({
+
+      // discoverReaders reports failure the same way every other SDK call
+      // does, by resolving with { error }. Dropping it sends a real fault —
+      // unsupported device, attestation refused, SDK not ready — down into
+      // waitForReader, which polls for ten seconds and then blames the
+      // hardware: "No NFC reader found on this device." Wrong diagnosis,
+      // ten seconds late.
+      const { error: discoverError } = await stripeHooks.discoverReaders({
         discoveryMethod: 'tapToPay',
         // DISABLED (test only): simulated: SIMULATED_READER,
         simulated: false,
       });
+      if (discoverError) { throw new Error(discoverError.message); }
 
       // 3. Connect
       setPaymentState('connecting');

@@ -12,10 +12,22 @@ interface Props {
 const StripeTerminalInit = ({ children }: Props): React.JSX.Element => {
   const { initialize, disconnectReader, clearCachedCredentials } = useStripeTerminal();
 
+  // initialize() resolves with { error } rather than rejecting, so a bare
+  // .then() reports every failure as a success. It also has to reach the
+  // backend — the SDK calls tokenProvider() before it touches native — so
+  // a merchant who opens the app with no signal lands here with the SDK
+  // dead and nothing to revive it. usePayment re-initializes on demand for
+  // exactly that case; this effect only has to report the truth.
   useEffect(() => {
     initialize()
-      .then(() => { console.log('Stripe Terminal SDK initialized ✓'); })
-      .catch((err) => { console.error('Stripe Terminal init failed:', err); });
+      .then(({ error }) => {
+        if (error) {
+          console.error('Stripe Terminal init failed:', error.code, error.message);
+          return;
+        }
+        console.log('Stripe Terminal SDK initialized ✓');
+      })
+      .catch((err) => { console.error('Stripe Terminal init threw:', err); });
   }, [initialize]);
 
   // Connection tokens are minted per connected account, so a cached token

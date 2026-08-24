@@ -30,6 +30,9 @@ jest.mock('@stripe/stripe-terminal-react-native', () => ({
   requestNeededAndroidPermissions: jest.fn().mockResolvedValue(true),
   useStripeTerminal: () => ({
     initialize:             jest.fn().mockResolvedValue({}),
+    // usePayment gates on getIsInitialized(), not the memoised boolean.
+    isInitialized:          true,
+    getIsInitialized:       jest.fn().mockReturnValue(true),
     discoverReaders:        jest.fn().mockResolvedValue({}),
     connectReader:          jest.fn().mockResolvedValue({}),
     disconnectReader:       jest.fn().mockResolvedValue({}),

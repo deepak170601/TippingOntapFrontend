@@ -1,7 +1,9 @@
 // src/services/api.ts
 import storage from './storage';
+import env from '../config/env';
 
-const BASE_URL = 'https://tippingontapbackend.fly.dev';
+// Chosen by build type in src/config/env.ts — never hardcode a host here.
+const BASE_URL = env.apiBaseUrl;
 const REQUEST_TIMEOUT_MS = 15000;
 
 interface RequestBody {

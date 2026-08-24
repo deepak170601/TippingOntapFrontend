@@ -111,6 +111,24 @@ below depends on it.
 or does not have Connect enabled in live mode. Neither is a code fix — report
 it and stop.
 
+### Set the location's `display_name` to the merchant, not the platform
+
+Whatever `EnsureTerminalLocationAsync` puts in `display_name` is what the
+customer sees on the Tap to Pay screen while their card is being read. If it
+is a platform-wide constant, every merchant's customers are shown the
+platform's name at the moment they hand over their card.
+
+This has to be done here. The React Native SDK's `connectReader` accepts a
+`merchantDisplayName`, but that parameter is read **only** by the iOS native
+layer (`ios/StripeTerminalReactNative.swift:376`). It appears in zero Kotlin
+files in `@stripe/stripe-terminal-react-native@0.0.1-beta.32`, and the Android
+`TapToPayConnectionConfiguration` accepts only `locationId`,
+`autoReconnectOnUnexpectedDisconnect`, and a listener. Passing it from the app
+on Android does nothing. Same for `onBehalfOf` and `tosAcceptancePermitted`.
+
+**Done when:** each connected account's Terminal location carries that
+merchant's own business name.
+
 ## Task 6 — Verify
 
 ```bash
