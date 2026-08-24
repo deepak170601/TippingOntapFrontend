@@ -17,6 +17,7 @@ import useTopInset from '../../hooks/useTopInset';
 import usePayment from '../../hooks/usePayment';
 import BottomTabBar from '../../components/BottomTabBar';
 import api from '../../services/api';
+import { useAuthContext } from '../../context/AuthContext';
 
 type NavProp   = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveEvent'>;
@@ -29,12 +30,23 @@ interface TipPreset {
 // ── Tip presets built from event.tipOptions ────────────────────
 // (built inside component — see below)
 
-const MERCHANT_FEE_PERCENT = 5;
+// NOTE: MERCHANT_FEE_PERCENT used to be hardcoded to 5 here and the earnings
+// summary was computed from it. The backend is the only authority on the rate —
+// it is what actually sets application_fee_amount on the PaymentIntent — and it
+// returns applicationFeePercent on GET /connect/status. The two happened to
+// agree, so nothing looked wrong, but they would have diverged silently the
+// moment the rate was changed server-side and the merchant would have been shown
+// a breakdown that was not what they were charged.
 
 const ActiveEventScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NavProp>();
   const topInset   = useTopInset();
   const route      = useRoute<RouteType>();
+
+  // Null until the first /connect/status refresh lands. AuthContext fetches on
+  // sign-in and on resume, so in practice it is known well before this screen
+  // is reachable — but the summary below still renders honestly if it is not.
+  const { applicationFeePercent } = useAuthContext();
   const event      = route.params?.event ?? {
     id: 'demo', name: "Sarah's Birthday Party",
     date: 'Feb 28, 2026', location: 'New York',
@@ -205,9 +217,13 @@ const handleEndEvent = (): void => {
 };
 
   // ── Earnings calc — uses real live values ──────────────────
+  // fee and finalAmount are null while the rate is unknown. Showing a dash for
+  // a second is honest; showing a number derived from a guess is not.
   const totalTips   = totalTipsCollected / 100;
-  const fee         = totalTips * (MERCHANT_FEE_PERCENT / 100);
-  const finalAmount = totalTips - fee;
+  const fee         = applicationFeePercent === null
+    ? null
+    : totalTips * (applicationFeePercent / 100);
+  const finalAmount = fee === null ? null : totalTips - fee;
   const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   return (
@@ -338,12 +354,18 @@ const handleEndEvent = (): void => {
               <Text style={styles.earningsValue}>{fmt(totalTips)}</Text>
             </View>
             <View style={styles.earningsRow}>
-              <Text style={styles.earningsLabel}>Merchant Fee ({MERCHANT_FEE_PERCENT}%) :</Text>
-              <Text style={[styles.earningsValue, { color: colours.error }]}>-{fmt(fee)}</Text>
+              <Text style={styles.earningsLabel}>
+                Merchant Fee{applicationFeePercent !== null ? ` (${applicationFeePercent}%)` : ''} :
+              </Text>
+              <Text style={[styles.earningsValue, { color: colours.error }]}>
+                {fee === null ? '—' : `-${fmt(fee)}`}
+              </Text>
             </View>
             <View style={styles.finalRow}>
               <Text style={styles.finalLabel}>Final Amount :</Text>
-              <Text style={styles.finalValue}>{fmt(finalAmount)}</Text>
+              <Text style={styles.finalValue}>
+                {finalAmount === null ? '—' : fmt(finalAmount)}
+              </Text>
             </View>
           </View>
         </View>

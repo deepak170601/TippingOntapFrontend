@@ -45,6 +45,12 @@ interface AuthContextType {
   // the merchant cannot withdraw yet. Something must say so on screen.
   payoutsEnabled:  boolean;
 
+  // The platform commission the backend actually charges. Null until the first
+  // status refresh lands — render nothing rather than falling back to a
+  // hardcoded rate, which is how the app previously came to display a fee that
+  // no longer had to match what was charged.
+  applicationFeePercent: number | null;
+
   // Re-reads GET /connect/status. Returns the fresh snapshot so a caller that
   // needs to branch on the result does not have to wait for a re-render.
   refreshConnectStatus: () => Promise<ConnectSnapshot | null>;
@@ -115,8 +121,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const status = await api.getConnectStatus();
 
       const snapshot: ConnectSnapshot = {
-        canCollectTips: status.canCollectTips,
-        payoutsEnabled: status.payoutsEnabled,
+        canCollectTips:        status.canCollectTips,
+        payoutsEnabled:        status.payoutsEnabled,
+        applicationFeePercent: status.applicationFeePercent,
       };
 
       setConnect(snapshot);
@@ -197,6 +204,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const canCollectTips = connect?.canCollectTips ?? user?.onboardingComplete ?? false;
   const payoutsEnabled = connect?.payoutsEnabled ?? user?.onboardingComplete ?? false;
 
+  // No fallback here, deliberately. The two flags above degrade to a sensible
+  // guess because being wrong costs a screen transition; a wrong fee is shown
+  // to the merchant as fact and does not match what was charged.
+  const applicationFeePercent = connect?.applicationFeePercent ?? null;
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -207,6 +219,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       updateUser,
       canCollectTips,
       payoutsEnabled,
+      applicationFeePercent,
       refreshConnectStatus,
     }}>
       {children}

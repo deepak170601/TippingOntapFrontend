@@ -17,6 +17,12 @@ interface User {
 export interface ConnectSnapshot {
   canCollectTips: boolean;
   payoutsEnabled: boolean;
+
+  // The platform's commission, straight from the backend. Null when it is not
+  // known yet — including when reading a snapshot written before this field
+  // existed. Null means "do not show a fee", never "assume a default": a
+  // guessed rate displayed as fact is the exact bug this replaced.
+  applicationFeePercent: number | null;
 }
 
 const KEYS = {
@@ -56,8 +62,22 @@ export const storage = {
   getConnectStatus: async (): Promise<ConnectSnapshot | null> => {
     const raw = await AsyncStorage.getItem(KEYS.CONNECT);
     if (!raw) { return null; }
+
     try {
-      return JSON.parse(raw) as ConnectSnapshot;
+      const parsed = JSON.parse(raw) as Partial<ConnectSnapshot>;
+
+      // Normalised rather than cast: a snapshot written by an older build has
+      // no applicationFeePercent, and casting would hand the UI an undefined
+      // typed as a number. Read it defensively so an upgrade cannot render a
+      // fee row as "NaN%".
+      return {
+        canCollectTips: parsed.canCollectTips === true,
+        payoutsEnabled: parsed.payoutsEnabled === true,
+        applicationFeePercent:
+          typeof parsed.applicationFeePercent === 'number'
+            ? parsed.applicationFeePercent
+            : null,
+      };
     } catch {
       return null;   // corrupt entry is the same as no entry
     }
