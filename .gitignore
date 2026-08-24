@@ -73,3 +73,9 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Internal working docs — kept locally, not shipped in the repo.
+# README.md is the only doc that ships.
+*.md
+*.txt
+!README.md
