@@ -104,11 +104,29 @@ const RegisterScreen = (): React.JSX.Element => {
     if (cleaned.length < 10) { Alert.alert('Error', 'Enter a valid phone number.'); return; }
     setPhoneLoading(true);
     try {
-      await api.sendPhoneOtp(`+1${cleaned}`);
+      // 'signup' tells the backend to refuse a number that already has an
+      // account rather than treating it as a login. This screen is reached by
+      // tapping "Create Account", so someone arriving here with a registered
+      // number used to be quietly signed in and dropped on a dashboard full of
+      // data they were not expecting.
+      await api.sendPhoneOtp(`+1${cleaned}`, 'signup');
       setPhoneStep('otp');
       setPhoneCountdown(60);
       setTimeout(() => phoneInputRefs.current[0]?.focus(), 300);
     } catch (err) {
+      // 409 — the number is already registered. Offer the way out rather than
+      // just reporting the problem; they are one tap from where they need to be.
+      if (err instanceof ApiError && err.status === 409) {
+        Alert.alert(
+          'Account Already Exists',
+          err.message,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => navigation.goBack() },
+          ],
+        );
+        return;
+      }
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send code.');
     } finally {
       setPhoneLoading(false);
@@ -135,8 +153,19 @@ const RegisterScreen = (): React.JSX.Element => {
       const cleaned = phone.replace(/\D/g, '');
       const res = await api.verifyPhoneOtp(`+1${cleaned}`, code);
       if (!res.newUser) {
-        // Already registered — log in instead
-        await loginWithTokens(res.accessToken!, res.refreshToken!, res.user!);
+        // Backstop. handleSendPhoneOtp passes intent 'signup', so a registered
+        // number is refused before a code is ever sent and this should not be
+        // reachable — unless the account was created during the ten minutes the
+        // code stays valid, or an older backend ignored the intent field.
+        //
+        // Previously this silently called loginWithTokens and dropped the person
+        // on a dashboard. Landing somewhere you did not ask to go is worse than
+        // being told why, even when the destination is legitimately yours.
+        Alert.alert(
+          'Account Already Exists',
+          'An account already exists with this phone number. Please sign in instead.',
+          [{ text: 'Sign In', onPress: () => navigation.goBack() }],
+        );
         return;
       }
       setPhone(`+1${cleaned}`);

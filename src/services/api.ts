@@ -309,8 +309,12 @@ export interface VerifyPhoneResponse {
 export const api = {
 
   // ── Auth — Phone OTP ────────────────────────────────────────
-  sendPhoneOtp: (phoneNumber: string) =>
-    request<{ message: string }>('POST', '/auth/send-phone-otp', { phoneNumber }),
+  // intent: 'signup' asks the backend to REFUSE a number that already has an
+  // account, with a 409, instead of treating it as a login. Only the sign-up
+  // screen should pass it. The login screen must not — this is the same endpoint
+  // login uses, and refusing a known number there would lock everyone out.
+  sendPhoneOtp: (phoneNumber: string, intent?: 'signup') =>
+    request<{ message: string }>('POST', '/auth/send-phone-otp', { phoneNumber, intent }),
 
   verifyPhoneOtp: (phoneNumber: string, code: string) =>
     request<VerifyPhoneResponse>('POST', '/auth/verify-phone-otp', { phoneNumber, code }),
