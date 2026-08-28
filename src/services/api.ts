@@ -271,6 +271,18 @@ export interface ConnectRequirementError {
   reason:      string;
 }
 
+/**
+ * Credentials for one embedded-onboarding session.
+ *
+ * The publishable key comes from the backend rather than app config on purpose:
+ * it is mode-specific, and the app has no way to know whether the server is on
+ * test or live keys. Hardcoding it here is how the two drift apart.
+ */
+export interface ConnectSession {
+  clientSecret:   string;
+  publishableKey: string;
+}
+
 export interface ConnectStatus {
   onboardingComplete:    boolean;
   chargesEnabled:        boolean;
@@ -401,6 +413,15 @@ export const api = {
     request<void>('POST', '/capture_payment_intent', { paymentIntentId, eventId }, true),
 
   // ── Stripe Connect ─────────────────────────────────────────────
+  // Two ways into onboarding, and both are load-bearing.
+  //
+  // createConnectSession backs the embedded component, which keeps the merchant
+  // inside the app. getOnboardingLink is the browser redirect it replaced — kept
+  // because it is what runs when the component cannot load, and because builds
+  // already in merchants' hands still call it.
+  createConnectSession: () =>
+    request<ConnectSession>('POST', '/connect/session', null, true),
+
   getOnboardingLink: () =>
     request<{ url: string }>('POST', '/connect/onboard', null, true),
 

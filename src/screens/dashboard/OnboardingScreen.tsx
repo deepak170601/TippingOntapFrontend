@@ -2,39 +2,34 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, Linking, ActivityIndicator, Alert,
+  StatusBar, ActivityIndicator,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
-import api from '../../services/api';
 import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
 import ConnectRequirementsList from '../../components/ConnectRequirementsList';
+import StripeOnboardingModal from '../../components/StripeOnboardingModal';
 
 const OnboardingScreen = (): React.JSX.Element => {
   const { refreshConnectStatus, connectStatus } = useAuthContext();
   const topInset = useTopInset();
 
-  const [loading,        setLoading]        = useState<boolean>(false);
+  const [setupOpen,      setSetupOpen]      = useState<boolean>(false);
   const [checking,       setChecking]       = useState<boolean>(false);
   const [error,          setError]          = useState<string | null>(null);
   const [statusMessage,  setStatusMessage]  = useState<string | null>(null);
 
-  // ── "Complete Setup" — opens Stripe hosted onboarding ──────
-  const handleCompleteSetup = async (): Promise<void> => {
-    setLoading(true);
+  // ── "Complete Setup" — opens onboarding inside the app ─────
+  // No await and no loading flag: the sheet mounts immediately and owns its own
+  // spinner while it fetches a session. It also owns the browser fallback, so
+  // this screen no longer needs to know that connect.stripe.com exists.
+  const handleCompleteSetup = (): void => {
     setError(null);
     setStatusMessage(null);
-    try {
-      const result = await api.getOnboardingLink();
-      await Linking.openURL(result.url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to open setup. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    setSetupOpen(true);
   };
 
   // ── "Check My Status" — polls Stripe for current state ─────
@@ -64,7 +59,9 @@ const OnboardingScreen = (): React.JSX.Element => {
           'moment so you can withdraw — your tips are held safely until then.',
         );
       } else {
-        setStatusMessage('Setup not yet complete. Please finish in the browser.');
+        setStatusMessage(
+          'Setup is not finished yet. Tap Complete Setup to pick up where you left off.',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not check status. Please try again.');
@@ -108,14 +105,12 @@ const OnboardingScreen = (): React.JSX.Element => {
 
         {/* ── Complete Setup button ────────────────────── */}
         <TouchableOpacity
-          style={[styles.primaryBtn, loading && styles.btnDisabled]}
+          style={[styles.primaryBtn, checking && styles.btnDisabled]}
           onPress={handleCompleteSetup}
-          disabled={loading || checking}
+          disabled={checking}
           activeOpacity={0.85}
         >
-          {loading
-            ? <ActivityIndicator color={colours.white} />
-            : <Text style={styles.primaryBtnText}>Complete Setup</Text>}
+          <Text style={styles.primaryBtnText}>Complete Setup</Text>
         </TouchableOpacity>
 
         {/* ── Divider ──────────────────────────────────── */}
@@ -129,7 +124,7 @@ const OnboardingScreen = (): React.JSX.Element => {
         <TouchableOpacity
           style={styles.checkBtn}
           onPress={handleCheckStatus}
-          disabled={loading || checking}
+          disabled={checking}
           activeOpacity={0.7}
         >
           {checking
@@ -155,6 +150,13 @@ const OnboardingScreen = (): React.JSX.Element => {
 
       {/* ── Footer ──────────────────────────────────────── */}
       <Text style={styles.footer}>🔒 Secured by Stripe</Text>
+
+      {/* Presents itself full-screen. On exit it refreshes connect status, and
+          if charges are now on, AppNavigator swaps this whole tree out. */}
+      <StripeOnboardingModal
+        visible={setupOpen}
+        onClose={() => setSetupOpen(false)}
+      />
     </View>
   );
 };

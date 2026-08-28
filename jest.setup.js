@@ -55,3 +55,23 @@ jest.mock('react-native-nfc-manager', () => ({
     goToNfcSetting: jest.fn().mockResolvedValue(undefined),
   },
 }));
+
+// ── Stripe Connect embedded components ───────────────────────
+// Same problem as the Terminal SDK above, reached by a longer path:
+// StripeOnboardingModal imports @stripe/stripe-react-native, PayoutSetupBanner
+// imports that, HomeScreen imports that, and App.tsx pulls in the lot. The
+// package registers a TurboModule at import time, which throws under Jest
+// before any test runs.
+//
+// ConnectComponentsProvider passes children straight through so the tree below
+// it still mounts. ConnectAccountOnboarding renders nothing, which is the
+// honest shape for a native full-screen modal in this environment.
+jest.mock('@stripe/stripe-react-native', () => ({
+  ConnectComponentsProvider: ({ children }) => children,
+  ConnectAccountOnboarding:  () => null,
+  loadConnectAndInitialize:  jest.fn(() => ({ update: jest.fn() })),
+}));
+
+// Pulled in by the Stripe SDK for its authenticated screens, never rendered
+// directly by our code.
+jest.mock('react-native-webview', () => ({ WebView: () => null }));

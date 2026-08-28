@@ -15,7 +15,7 @@
 // forgotten by the time it matters.
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Linking, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuthContext } from '../context/AuthContext';
@@ -24,13 +24,14 @@ import {
   colours, fontSizes, fontWeights, spacing, radius,
 } from '../theme';
 import ConnectRequirementsList from './ConnectRequirementsList';
+import StripeOnboardingModal from './StripeOnboardingModal';
 
 const PayoutSetupBanner = (): React.JSX.Element | null => {
   const { canCollectTips, payoutsEnabled, connectStatus } = useAuthContext();
 
-  const [held,    setHeld]    = useState<number | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error,   setError]   = useState<string | null>(null);
+  const [held,      setHeld]      = useState<number | null>(null);
+  const [setupOpen, setSetupOpen] = useState<boolean>(false);
+  const [error,     setError]     = useState<string | null>(null);
 
   const visible = canCollectTips && !payoutsEnabled;
 
@@ -59,19 +60,17 @@ const PayoutSetupBanner = (): React.JSX.Element | null => {
     }, [visible]),
   );
 
-  const handleFinishSetup = async (): Promise<void> => {
-    setLoading(true);
+  // Opens onboarding in-app rather than in a browser. The sheet handles its own
+  // loading, errors and browser fallback, so there is nothing to await here.
+  const handleFinishSetup = (): void => {
     setError(null);
-    try {
-      const { url } = await api.getOnboardingLink();
-      await Linking.openURL(url);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Could not open setup. Please try again.',
-      );
-    } finally {
-      setLoading(false);
-    }
+    setSetupOpen(true);
+  };
+
+  // Stripe may have switched payouts on while the sheet was open, in which case
+  // `visible` goes false and this banner unmounts itself.
+  const handleSetupClosed = (): void => {
+    setSetupOpen(false);
   };
 
   if (!visible) { return null; }
@@ -105,15 +104,14 @@ const PayoutSetupBanner = (): React.JSX.Element | null => {
       <ConnectRequirementsList status={connectStatus} />
 
       <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
+        style={styles.button}
         onPress={handleFinishSetup}
-        disabled={loading}
         activeOpacity={0.85}
       >
-        {loading
-          ? <ActivityIndicator size="small" color={colours.textOnBlue} />
-          : <Text style={styles.buttonText}>Finish payment setup</Text>}
+        <Text style={styles.buttonText}>Finish payment setup</Text>
       </TouchableOpacity>
+
+      <StripeOnboardingModal visible={setupOpen} onClose={handleSetupClosed} />
     </View>
   );
 };
@@ -160,9 +158,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     alignItems:      'center',
     marginTop:       spacing.md,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
   buttonText: {
     color:      colours.textOnBlue,
