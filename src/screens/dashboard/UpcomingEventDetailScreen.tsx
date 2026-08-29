@@ -53,7 +53,12 @@ const UpcomingEventDetailScreen = (): React.JSX.Element => {
         [
           {
             text: 'Go to Event',
-            onPress: () => navigation.navigate('ActiveEvent', { event }),
+            // startEvent returns void, so the event in route params still says
+            // 'upcoming'. Hand the collection screen the status the backend now
+            // holds, or it refuses to take tips for an event that just went live.
+            onPress: () => navigation.navigate('TipCollection', {
+              event: { ...event, status: 'active' },
+            }),
           },
           {
             text: 'Stay Here',

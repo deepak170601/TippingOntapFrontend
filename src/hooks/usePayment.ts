@@ -19,7 +19,25 @@ export type PaymentState =
 interface StartPaymentArgs {
   amountCents: number;
   eventId:     string;
+
+  /**
+   * Run against Stripe's simulated reader instead of the NFC radio.
+   *
+   * Only the card-reading half is faked. Everything downstream is the real
+   * thing — the PaymentIntent is created by our backend with its real
+   * application_fee_amount, it is confirmed and captured against Stripe, and
+   * the tip is recorded. That is what makes it useful for checking credits,
+   * debits and commissions on a device that cannot do Tap to Pay.
+   *
+   * Test mode only. Stripe refuses to connect a simulated reader when the
+   * connection token came from a live secret key.
+   */
+  simulated?:  boolean;
 }
+
+// Which card the simulated reader presents. 4242… always succeeds; swap in one
+// of the decline numbers from the DISABLED block below to exercise a failure.
+const SIMULATED_CARD = '4242424242424242';
 
 interface PaymentResult {
   success:          boolean;
@@ -194,7 +212,7 @@ const usePayment = () => {
 
   // ── Real payment ───────────────────────────────────────────
   const runRealPayment = useCallback(async (
-    { amountCents, eventId }: StartPaymentArgs,
+    { amountCents, eventId, simulated = false }: StartPaymentArgs,
   ): Promise<PaymentResult> => {
     setErrorMessage('');
 
@@ -203,7 +221,9 @@ const usePayment = () => {
       //    it, so a phone with NFC switched off should be told now rather
       //    than once a PaymentIntent already exists on the account.
       setPaymentState('checking_nfc');
-      await checkNfc();
+      // A simulated reader presents its own card, so no NFC radio is involved.
+      // Checking for one would reject exactly the devices this path exists for.
+      if (!simulated) { await checkNfc(); }
 
       // 2. Make sure the SDK is actually up, then discover the phone's own
       //    reader. StripeTerminalInit starts initialization on login, but
@@ -233,11 +253,24 @@ const usePayment = () => {
       // waitForReader, which polls for ten seconds and then blames the
       // hardware: "No NFC reader found on this device." Wrong diagnosis,
       // ten seconds late.
-      const { error: discoverError } = await stripeHooks.discoverReaders({
-        discoveryMethod: 'tapToPay',
-        // DISABLED (test only): simulated: SIMULATED_READER,
-        simulated: false,
-      });
+      //
+      // The simulated branch discovers over bluetoothScan rather than a
+      // simulated tapToPay reader. Tap to Pay discovery puts the device through
+      // Google's attestation checks and wants the NFC hardware present, which
+      // is the thing being worked around; a simulated bluetoothScan reader
+      // needs no radio of any kind and runs on an emulator. The discovery
+      // method has no bearing on the money — the PaymentIntent, the fee and the
+      // capture are identical either way.
+      const { error: discoverError } = simulated
+        ? await stripeHooks.discoverReaders({
+            discoveryMethod: 'bluetoothScan',
+            simulated:       true,
+          })
+        : await stripeHooks.discoverReaders({
+            discoveryMethod: 'tapToPay',
+            // DISABLED (test only): simulated: SIMULATED_READER,
+            simulated: false,
+          });
       if (discoverError) { throw new Error(discoverError.message); }
 
       // 3. Connect
@@ -246,12 +279,29 @@ const usePayment = () => {
 
       const locationId = await resolveLocationId();
 
-      const { error: connectError } = await stripeHooks.connectReader({
-        reader,
-        locationId,
-        discoveryMethod: 'tapToPay',
-      });
+      const { error: connectError } = simulated
+        ? await stripeHooks.connectReader({
+            reader,
+            locationId,
+            discoveryMethod: 'bluetoothScan',
+          })
+        : await stripeHooks.connectReader({
+            reader,
+            locationId,
+            discoveryMethod: 'tapToPay',
+          });
       if (connectError) { throw new Error(connectError.message); }
+
+      // Must come after connectReader — the simulated card is a property of the
+      // connected reader, not of the SDK. Loud in the log on purpose: a
+      // successful tap in logcat should never be mistaken for a real card read.
+      if (simulated) {
+        console.warn(
+          `[payment] SIMULATED reader — presenting ${SIMULATED_CARD}; no real card is read`,
+        );
+        const { error: simCardError } = await stripeHooks.setSimulatedCard(SIMULATED_CARD);
+        if (simCardError) { throw new Error(simCardError.message); }
+      }
 
       // 4. Create PaymentIntent on backend
       const intentData = await api.createPaymentIntent(amountCents, eventId);

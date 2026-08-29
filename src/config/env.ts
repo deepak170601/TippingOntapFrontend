@@ -39,6 +39,34 @@ const env: AppEnv = __DEV__ ? development : production;
 
 export const isProduction = env.name === 'production';
 
+// ─────────────────────────────────────────────────────────────
+// TEMPORARY — simulated payments
+//
+// Shows a second button on the tip screen that runs the whole money path
+// against Stripe's simulated reader instead of the NFC radio: a real
+// PaymentIntent, a real application fee, a real capture, a real tip row. It
+// exists so the ledger can be verified on a device that cannot do Tap to Pay.
+//
+// Set this to false to remove the button. That is the entire off switch, and
+// it is deliberately not tied to __DEV__ — the whole point is to be able to
+// test a release APK on a real phone.
+//
+// Two things stop this becoming a live-mode hole. Stripe refuses to connect a
+// simulated reader to a connection token minted from a live secret key, so the
+// path cannot reach real money even if this is left on. And the button says so
+// on its face. Neither is a reason to ship with it enabled.
+// ─────────────────────────────────────────────────────────────
+export const SIMULATED_PAYMENTS_ENABLED = true;
+
+if (SIMULATED_PAYMENTS_ENABLED) {
+  // Warns in release builds too, on purpose — a debug-only warning would go
+  // unseen in exactly the build where leaving this on would matter.
+  console.warn(
+    '[env] SIMULATED_PAYMENTS_ENABLED is true — the tip screen shows a test '
+    + 'payment button. Set it to false in src/config/env.ts before release.',
+  );
+}
+
 if (__DEV__) {
   console.log(`[env] development build → ${env.apiBaseUrl}`);
 

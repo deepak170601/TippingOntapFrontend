@@ -10,6 +10,7 @@ import { useAuthContext }            from '../context/AuthContext';
 import AuthNavigator                 from './AuthNavigator';
 import MainNavigator                 from './MainNavigator';
 import ActiveEventScreen             from '../screens/dashboard/ActiveEventScreen';
+import TipCollectionScreen           from '../screens/dashboard/TipCollectionScreen';
 import ActiveEventsScreen            from '../screens/dashboard/ActiveEventsScreen';
 import UpcomingEventsScreen          from '../screens/dashboard/UpcomingEventsScreen';
 import AllEventsScreen               from '../screens/dashboard/AllEventsScreen';
@@ -32,6 +33,10 @@ type OnboardingRootParamList = {
 
 export type RootStackParamList = {
   Main:                undefined;
+  // TipCollection is where a running event is opened from. ActiveEvent stays
+  // registered — it is the merchant-facing view of the same event, with the
+  // running totals and the earnings breakdown, and nothing about it changed.
+  TipCollection:       { event: Event };
   ActiveEvent:         { event: Event };
   ActiveEvents:        undefined;
   PastEvents:          undefined;
@@ -74,6 +79,11 @@ const AuthenticatedNavigator = (): React.JSX.Element => (
       <MainRoot.Screen
         name="Main"
         component={MainNavigator}
+      />
+      <MainRoot.Screen
+        name="TipCollection"
+        component={TipCollectionScreen}
+        options={{ animation: 'slide_from_right' }}
       />
       <MainRoot.Screen
         name="ActiveEvent"

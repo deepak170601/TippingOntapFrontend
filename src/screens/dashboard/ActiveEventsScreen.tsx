@@ -46,7 +46,7 @@ const ActiveEventsScreen = (): React.JSX.Element => {
         index === 0                   && styles.eventRowFirst,
         index === filtered.length - 1 && styles.eventRowLast,
       ]}
-      onPress={() => navigation.navigate('ActiveEvent', { event: item })}
+      onPress={() => navigation.navigate('TipCollection', { event: item })}
       activeOpacity={0.75}
     >
       <View style={styles.liveDot} />
