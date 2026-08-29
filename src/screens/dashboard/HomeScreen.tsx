@@ -17,6 +17,7 @@ import {
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
 import PayoutSetupBanner from '../../components/PayoutSetupBanner';
+import ConfirmSheet from '../../components/common/ConfirmSheet';
 
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
@@ -77,34 +78,30 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
   };
 
   // Ending an event is one tap, irreversible, and stops the merchant taking
-  // money — so it asks first. The failure used to be swallowed too, which is
-  // worse than it sounds: the card stays on screen looking unchanged, so the
-  // merchant reads a failed request as a successful one and walks away from an
-  // event that is still live.
-  const handleEndEvent = (event: Event): void => {
-    Alert.alert(
-      'End this event?',
-      `"${event.name}" will move to Past Events and stop accepting tips. `
-      + 'This cannot be undone.',
-      [
-        { text: 'No, keep it running', style: 'cancel' },
-        {
-          text:    'Yes, end it',
-          style:   'destructive',
-          onPress: async () => {
-            try {
-              await api.endEvent(event.id);
-              await loadData();
-            } catch (err) {
-              Alert.alert(
-                'Could not end event',
-                err instanceof Error ? err.message : 'Please try again.',
-              );
-            }
-          },
-        },
-      ],
-    );
+  // money — so it asks first, in the app's own card rather than an OS alert.
+  //
+  // The failure used to be swallowed, which is worse than it sounds: the card
+  // stays on screen looking unchanged, so the merchant reads a failed request
+  // as a successful one and walks away from an event that is still live.
+  const [endingEvent, setEndingEvent] = useState<Event | null>(null);
+  const [endBusy,     setEndBusy]     = useState<boolean>(false);
+
+  const confirmEndEvent = async (): Promise<void> => {
+    if (endingEvent === null) { return; }
+    setEndBusy(true);
+    try {
+      await api.endEvent(endingEvent.id);
+      setEndingEvent(null);
+      await loadData();
+    } catch (err) {
+      setEndingEvent(null);
+      Alert.alert(
+        'Could not end event',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
+    } finally {
+      setEndBusy(false);
+    }
   };
 
   const firstName = user?.fullName?.split(' ')[0] ?? 'Alex';
@@ -190,7 +187,7 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
               key={event.id}
               event={event}
               onViewTip={() => handleViewTip(event)}
-              onEndEvent={() => handleEndEvent(event)}
+              onEndEvent={() => setEndingEvent(event)}
             />
           ))
         )}
@@ -216,6 +213,21 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
 
         <View style={styles.bottomPad} />
       </ScrollView>
+
+      <ConfirmSheet
+        visible={endingEvent !== null}
+        title="End this event?"
+        message={
+          `"${endingEvent?.name ?? ''}" will move to Past Events and stop `
+          + 'accepting tips. This cannot be undone.'
+        }
+        confirmLabel="Yes, end it"
+        cancelLabel="No, keep it running"
+        destructive
+        busy={endBusy}
+        onConfirm={confirmEndEvent}
+        onCancel={() => setEndingEvent(null)}
+      />
     </View>
   );
 };
