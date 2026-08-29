@@ -1,5 +1,5 @@
 // src/navigation/AppNavigator.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import {
@@ -20,6 +20,7 @@ import PastEventsScreen              from '../screens/dashboard/PastEventsScreen
 import UpcomingEventDetailScreen     from '../screens/dashboard/UpcomingEventDetailScreen';
 import OnboardingScreen              from '../screens/dashboard/OnboardingScreen';
 import { colours }                   from '../theme';
+import { requestNotificationPermission } from '../services/notifications';
 import type { Event }                from '../services/api';
 
 // ── Param lists ───────────────────────────────────────────────
@@ -73,7 +74,21 @@ const OnboardingNavigator = (): React.JSX.Element => (
 );
 
 // ── Authenticated — full app ──────────────────────────────────
-const AuthenticatedNavigator = (): React.JSX.Element => (
+const AuthenticatedNavigator = (): React.JSX.Element => {
+  // Notification permission is asked here, once, when a signed-in merchant
+  // reaches the app — not mid-task.
+  //
+  // It used to be requested straight after an event was created, which put
+  // Android's system permission dialog on screen a frame before the app's own
+  // "event created" dialog. Two dialog windows in the same beat, and the
+  // second one's buttons stopped responding.
+  //
+  // requestPermission only shows a dialog the first time; every later call
+  // resolves from the stored answer, so running this on each launch is free.
+  // It is not awaited and cannot throw — nothing here depends on the answer.
+  useEffect(() => { requestNotificationPermission(); }, []);
+
+  return (
   <StripeTerminalInit>
     <MainRoot.Navigator screenOptions={{ headerShown: false }}>
       <MainRoot.Screen
@@ -122,7 +137,8 @@ const AuthenticatedNavigator = (): React.JSX.Element => (
       />
     </MainRoot.Navigator>
   </StripeTerminalInit>
-);
+  );
+};
 
 // ── Root navigator ────────────────────────────────────────────
 const AppNavigator = (): React.JSX.Element => {

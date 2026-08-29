@@ -2,17 +2,30 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, StatusBar, ScrollView, Alert, Platform,
+  StyleSheet, StatusBar, ScrollView, Alert, Platform, Modal,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { RootNavigationProp } from '../../navigation/AppNavigator';
+import type { MainTabParamList } from '../../navigation/MainNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
 import api from '../../services/api';
-import { requestNotificationPermission } from '../../services/notifications';
 
 type NavProp = RootNavigationProp;
+
+// This screen sits in the bottom tab navigator, so its two destinations are
+// reached in different ways, and conflating them is what broke "Go Home".
+//
+// "View Upcoming Events" is a screen on the parent stack. navigate() bubbles
+// out of the tab navigator to find it, so the root-typed prop reaches it.
+//
+// "Go Home" is a sibling *tab*. It used to navigate to 'Main' — the stack route
+// that contains this very tab navigator — so React Navigation dutifully went to
+// a screen that was already on top and nothing moved. The Home tab has to be
+// named directly.
+type TabNavProp = BottomTabNavigationProp<MainTabParamList>;
 
 interface TipOption { label: string; cents: number | null; }
 
@@ -57,11 +70,21 @@ const toTimeString = (d: Date): string =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 const CreateEventScreen = (): React.JSX.Element => {
-  const navigation  = useNavigation<NavProp>();
+  // Same runtime object, two types. useNavigation returns the nearest
+  // navigator — the tab one — and navigate() bubbles to the parent stack when a
+  // name is not found locally, so both of these work; the types just describe
+  // which set of routes each call is aiming at.
+  const navigation    = useNavigation<NavProp>();
+  const tabNavigation = useNavigation<TabNavProp>();
+
   const topInset    = useTopInset();
   const [form,      setForm]      = useState<FormState>(INITIAL_FORM);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errors,    setErrors]    = useState<Partial<Record<keyof FormState, string>>>({});
+
+  // Name of the event just created, and the flag for the success sheet. Held
+  // separately because the form is reset the moment the request succeeds.
+  const [createdName, setCreatedName] = useState<string | null>(null);
 
   // ── Picker visibility ─────────────────────────────────────
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -111,6 +134,20 @@ const CreateEventScreen = (): React.JSX.Element => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // ── Leaving the success sheet ─────────────────────────────
+  // Dismiss before navigating, never after. A React Native Modal on Android is
+  // its own window sitting above the whole activity, so navigating while it is
+  // still up renders the destination underneath it — the app looks frozen on a
+  // dialog whose buttons appear to do nothing.
+  const leaveTo = (where: 'upcoming' | 'home'): void => {
+    setCreatedName(null);
+    if (where === 'upcoming') {
+      navigation.navigate('UpcomingEvents');
+    } else {
+      tabNavigation.navigate('Home');
+    }
+  };
+
   // ── Submit ────────────────────────────────────────────────
   const handleCreate = async (): Promise<void> => {
     if (!validate()) { return; }
@@ -130,27 +167,9 @@ const CreateEventScreen = (): React.JSX.Element => {
         tipOptions:  selectedTips,
       });
 
+      const created = form.name.trim();
       setForm(INITIAL_FORM);
-
-      // Ask for notification permission here rather than at launch. A cold
-      // "Allow notifications?" on first open is the prompt everyone denies;
-      // asked one second after scheduling an event, what it is for is obvious.
-      // Android 12 and below grant it at install, so this shows nothing there.
-      // Declining is fine — the sync on the next Home focus simply no-ops.
-      await requestNotificationPermission();
-
-      Alert.alert(
-        '✅ Event Created!',
-        `"${form.name}" has been added to your upcoming events.`,
-        [{
-          text: 'View Upcoming Events',
-          onPress: () => navigation.navigate('UpcomingEvents'),
-        }, {
-          text: 'Go Home',
-          style: 'cancel',
-          onPress: () => navigation.navigate('Main'),
-        }]
-      );
+      setCreatedName(created);
 
     } catch (err) {
       Alert.alert('Failed to Create', err instanceof Error ? err.message : 'Please try again.');
@@ -322,6 +341,47 @@ const CreateEventScreen = (): React.JSX.Element => {
 
         <View style={styles.bottomPad} />
       </ScrollView>
+
+      {/* ── Event created ──────────────────────────────────
+          Was Alert.alert, which draws in the OS's own style and ignores the
+          app's palette entirely. This is the same card the rest of the app
+          uses: white surface, blue border, brand primary on the action. */}
+      <Modal
+        visible={createdName !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCreatedName(null)}
+      >
+        <View style={styles.successScrim}>
+          <View style={styles.successCard}>
+            <View style={styles.successCircle}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+
+            <Text style={styles.successTitle}>Event Created</Text>
+            <Text style={styles.successBody}>
+              <Text style={styles.successName}>{createdName}</Text>
+              {' has been added to your upcoming events.'}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.successPrimary}
+              onPress={() => leaveTo('upcoming')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.successPrimaryText}>View Upcoming Events</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.successSecondary}
+              onPress={() => leaveTo('home')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.successSecondaryText}>Go Home</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -408,6 +468,78 @@ const styles = StyleSheet.create({
   },
   createBtnDisabled: { opacity: 0.6 },
   createBtnText:     { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colours.white },
+
+  // ── Event-created sheet ───────────────────────────────────
+  successScrim: {
+    flex:              1,
+    backgroundColor:   colours.overlay,
+    alignItems:        'center',
+    justifyContent:    'center',
+    paddingHorizontal: spacing.xl,
+  },
+  successCard: {
+    width:           '100%',
+    backgroundColor: colours.surface,
+    borderRadius:    radius.xxl,
+    padding:         spacing.xxl,
+    alignItems:      'center',
+    borderWidth:     1,
+    borderColor:     colours.borderBlue,
+    ...shadows.strong,
+  },
+  successCircle: {
+    width:           72,
+    height:          72,
+    borderRadius:    36,
+    backgroundColor: colours.success,
+    alignItems:      'center',
+    justifyContent:  'center',
+    marginBottom:    spacing.lg,
+  },
+  successIcon: {
+    fontSize:   38,
+    color:      colours.white,
+    fontWeight: fontWeights.bold,
+  },
+  successTitle: {
+    fontSize:     fontSizes.xl,
+    fontWeight:   fontWeights.extraBold,
+    color:        colours.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  successBody: {
+    fontSize:     fontSizes.sm,
+    color:        colours.textSecondary,
+    textAlign:    'center',
+    lineHeight:   20,
+    marginBottom: spacing.xl,
+  },
+  successName: {
+    fontWeight: fontWeights.bold,
+    color:      colours.textPrimary,
+  },
+  successPrimary: {
+    width:           '100%',
+    backgroundColor: colours.primary,
+    borderRadius:    radius.md,
+    paddingVertical: spacing.md + 2,
+    alignItems:      'center',
+    ...shadows.blue,
+  },
+  successPrimaryText: {
+    fontSize:   fontSizes.base,
+    fontWeight: fontWeights.bold,
+    color:      colours.white,
+  },
+  successSecondary: {
+    paddingVertical: spacing.md,
+    marginTop:       spacing.xs,
+  },
+  successSecondaryText: {
+    fontSize:   fontSizes.sm,
+    fontWeight: fontWeights.semiBold,
+    color:      colours.textSecondary,
+  },
 
   bottomPad: { height: spacing.xxxl },
 });
