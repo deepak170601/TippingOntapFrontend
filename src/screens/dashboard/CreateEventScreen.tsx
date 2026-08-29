@@ -28,14 +28,22 @@ type NavProp = RootNavigationProp;
 // named directly.
 type TabNavProp = BottomTabNavigationProp<MainTabParamList>;
 
-interface TipOption { label: string; cents: number | null; }
+// One-tap starting points, not the whole menu. A merchant can add any amount
+// below, and remove any of these.
+//
+// These used to BE the menu — $1, $2, $3 and a "Custom" chip that did nothing.
+// Custom stored a null which handleCreate then filtered out, so choosing it
+// alone produced an event with no tip amounts at all, and the tip screen
+// correctly showed none. Whatever the merchant picked here is exactly what a
+// customer is offered, so it had to stop being a fixed list of three.
+const QUICK_AMOUNTS: number[] = [100, 200, 300, 500, 1000, 2000];
 
-const ALL_TIP_OPTIONS: TipOption[] = [
-  { label: '$1', cents: 100  },
-  { label: '$2', cents: 200  },
-  { label: '$3', cents: 300  },
-  { label: 'Custom', cents: null },
-];
+// Stripe rejects anything under 50 cents outright, so there is no point letting
+// one be typed. The ceiling is ours — a tip jar is not a payment terminal, and
+// a mistyped 50000 should be caught here rather than by a merchant wondering
+// why a customer is being asked for $500.
+const MIN_TIP_CENTS = 50;
+const MAX_TIP_CENTS = 50000;
 
 interface FormState {
   name:        string;
@@ -43,6 +51,9 @@ interface FormState {
   time:        Date | null;
   location:    string;
   description: string;
+
+  // Cent values, ascending. Sent verbatim as the event's tipOptions, and what
+  // TipCollectionScreen puts in front of a customer.
   tipOptions:  number[];
 }
 
@@ -52,7 +63,7 @@ const INITIAL_FORM: FormState = {
   time:        null,
   location:    '',
   description: '',
-  tipOptions:  [1],
+  tipOptions:  [100, 200, 500],
 };
 
 // ── Formatters ─────────────────────────────────────────────────
@@ -65,6 +76,11 @@ const formatTime = (d: Date): string =>
 // Backend expects YYYY-MM-DD
 const toIsoDate = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Whole dollars render without cents — "$5", not "$5.00" — because that is how
+// a tip button reads on the customer's screen, and the two should match.
+const money = (cents: number): string =>
+  cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
 
 // Backend expects HH:MM
 const toTimeString = (d: Date): string =>
@@ -87,6 +103,9 @@ const CreateEventScreen = (): React.JSX.Element => {
   // separately because the form is reset the moment the request succeeds.
   const [createdName, setCreatedName] = useState<string | null>(null);
 
+  // Text in the "add an amount" box, in dollars exactly as typed.
+  const [customTip, setCustomTip] = useState<string>('');
+
   // ── Picker visibility ─────────────────────────────────────
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [showTimePicker, setShowTimePicker] = useState<boolean>(false);
@@ -96,14 +115,54 @@ const CreateEventScreen = (): React.JSX.Element => {
     setErrors(prev => ({ ...prev, [key]: undefined }));
   };
 
-  const toggleTipOption = (index: number): void => {
-    setForm(prev => {
-      const already  = prev.tipOptions.includes(index);
-      const updated  = already
-        ? prev.tipOptions.filter(i => i !== index)
-        : [...prev.tipOptions, index];
-      return { ...prev, tipOptions: updated };
-    });
+  // Kept sorted so the customer-facing grid reads low to high regardless of the
+  // order the merchant happened to add them in.
+  const toggleTipAmount = (cents: number): void => {
+    setForm(prev => ({
+      ...prev,
+      tipOptions: prev.tipOptions.includes(cents)
+        ? prev.tipOptions.filter(c => c !== cents)
+        : [...prev.tipOptions, cents].sort((a, b) => a - b),
+    }));
+    setErrors(prev => ({ ...prev, tipOptions: undefined }));
+  };
+
+  const addCustomAmount = (): void => {
+    const dollars = parseFloat(customTip.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(dollars) || dollars <= 0) {
+      setErrors(prev => ({ ...prev, tipOptions: 'Enter an amount like 7.50' }));
+      return;
+    }
+
+    // Round before comparing, or 0.499 passes the floor check and then stores
+    // as 50 anyway — the value tested has to be the value kept.
+    const cents = Math.round(dollars * 100);
+
+    if (cents < MIN_TIP_CENTS) {
+      setErrors(prev => ({
+        ...prev,
+        tipOptions: `Tips must be at least $${(MIN_TIP_CENTS / 100).toFixed(2)}`,
+      }));
+      return;
+    }
+    if (cents > MAX_TIP_CENTS) {
+      setErrors(prev => ({
+        ...prev,
+        tipOptions: `Tips cannot be more than $${MAX_TIP_CENTS / 100}`,
+      }));
+      return;
+    }
+    if (form.tipOptions.includes(cents)) {
+      setErrors(prev => ({ ...prev, tipOptions: 'That amount is already on the list' }));
+      return;
+    }
+
+    setForm(prev => ({
+      ...prev,
+      tipOptions: [...prev.tipOptions, cents].sort((a, b) => a - b),
+    }));
+    setCustomTip('');
+    setErrors(prev => ({ ...prev, tipOptions: undefined }));
   };
 
   // ── Date picker handler ───────────────────────────────────
@@ -155,17 +214,13 @@ const CreateEventScreen = (): React.JSX.Element => {
     setIsLoading(true);
 
     try {
-      const selectedTips = form.tipOptions
-        .map(i => ALL_TIP_OPTIONS[i].cents)
-        .filter((c): c is number => c !== null);
-
       await api.createEvent({
         name:        form.name.trim(),
         date:        toIsoDate(form.date!),        // → "2029-06-17"
         time:        form.time ? toTimeString(form.time) : undefined, // → "19:00"
         location:    form.location.trim(),
         description: form.description.trim() || undefined,
-        tipOptions:  selectedTips,
+        tipOptions:  form.tipOptions,
       });
 
       const created = form.name.trim();
@@ -287,41 +342,77 @@ const CreateEventScreen = (): React.JSX.Element => {
             />
           </Field>
 
-          {/* ── Tip Amount Options — multi select ───────── */}
+          {/* ── Tip amounts — whatever the merchant wants ── */}
           <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>Select Tip Amount Options</Text>
+            <Text style={styles.fieldLabel}>Tip Amounts</Text>
+            <Text style={styles.tipHint}>
+              Exactly these buttons are what a customer sees when they tip.
+            </Text>
+
+            {/* Chosen amounts. Tap to remove. */}
+            <View style={styles.chosenRow}>
+              {form.tipOptions.length === 0 ? (
+                <Text style={styles.chosenEmpty}>No amounts yet — add at least one.</Text>
+              ) : form.tipOptions.map(cents => (
+                <TouchableOpacity
+                  key={cents}
+                  style={styles.chosenChip}
+                  onPress={() => toggleTipAmount(cents)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.chosenChipText}>{money(cents)}</Text>
+                  <Text style={styles.chosenChipX}>×</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Add your own */}
+            <View style={styles.customRow}>
+              <View style={styles.customInputWrap}>
+                <Text style={styles.customCurrency}>$</Text>
+                <TextInput
+                  style={styles.customInput}
+                  value={customTip}
+                  onChangeText={setCustomTip}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colours.textSecondary}
+                  returnKeyType="done"
+                  onSubmitEditing={addCustomAmount}
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={addCustomAmount}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.addBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Common amounts, as a shortcut rather than the menu */}
+            <Text style={styles.quickLabel}>Quick add</Text>
             <View style={styles.tipOptionsRow}>
-              {ALL_TIP_OPTIONS.map((opt, i) => {
-                const selected = form.tipOptions.includes(i);
-                const isCustom = opt.cents === null;
+              {QUICK_AMOUNTS.map(cents => {
+                const selected = form.tipOptions.includes(cents);
                 return (
                   <TouchableOpacity
-                    key={opt.label}
-                    style={[
-                      styles.tipOption,
-                      selected  && styles.tipOptionSelected,
-                      isCustom  && styles.tipOptionCustom,
-                      isCustom && selected && styles.tipOptionCustomSelected,
-                    ]}
-                    onPress={() => toggleTipOption(i)}
+                    key={cents}
+                    style={[styles.tipOption, selected && styles.tipOptionSelected]}
+                    onPress={() => toggleTipAmount(cents)}
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.tipOptionText, selected && styles.tipOptionTextSelected]}>
-                      {opt.label}{isCustom ? ' +' : ''}
+                      {money(cents)}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
+
             {errors.tipOptions ? (
               <Text style={styles.errorText}>{errors.tipOptions}</Text>
-            ) : (
-              <Text style={styles.tipHint}>
-                Selected: {form.tipOptions.length === 0
-                  ? 'None'
-                  : form.tipOptions.map(i => ALL_TIP_OPTIONS[i].label).join(', ')}
-              </Text>
-            )}
+            ) : null}
           </View>
 
           {/* ── Event Description ────────────────────────── */}
@@ -453,7 +544,88 @@ const styles = StyleSheet.create({
   pickerIcon:       { fontSize: 18 },
 
   // Tip options
-  tipOptionsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs },
+  // ── Tip amounts ───────────────────────────────────────────
+  chosenRow: {
+    flexDirection: 'row',
+    flexWrap:      'wrap',
+    gap:           spacing.sm,
+    marginTop:     spacing.sm,
+    marginBottom:  spacing.md,
+    minHeight:     36,
+    alignItems:    'center',
+  },
+  chosenEmpty: {
+    fontSize:  fontSizes.sm,
+    color:     colours.textSecondary,
+    fontStyle: 'italic',
+  },
+  chosenChip: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    backgroundColor:   colours.primary,
+    borderRadius:      radius.round,
+    paddingVertical:   spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+    gap:               spacing.xs,
+  },
+  chosenChipText: {
+    fontSize:   fontSizes.sm,
+    fontWeight: fontWeights.bold,
+    color:      colours.white,
+  },
+  chosenChipX: {
+    fontSize:   fontSizes.base,
+    color:      'rgba(255,255,255,0.75)',
+    lineHeight: 18,
+  },
+
+  customRow: {
+    flexDirection: 'row',
+    gap:           spacing.sm,
+    marginBottom:  spacing.md,
+  },
+  customInputWrap: {
+    flex:              1,
+    flexDirection:     'row',
+    alignItems:        'center',
+    borderWidth:       1.5,
+    borderColor:       colours.border,
+    borderRadius:      radius.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor:   colours.surface,
+  },
+  customCurrency: {
+    fontSize:    fontSizes.base,
+    fontWeight:  fontWeights.bold,
+    color:       colours.primary,
+    marginRight: spacing.xs,
+  },
+  customInput: {
+    flex:            1,
+    fontSize:        fontSizes.base,
+    color:           colours.textPrimary,
+    paddingVertical: spacing.md,
+  },
+  addBtn: {
+    backgroundColor:   colours.primary,
+    borderRadius:      radius.md,
+    paddingHorizontal: spacing.xl,
+    justifyContent:    'center',
+  },
+  addBtnText: {
+    fontSize:   fontSizes.base,
+    fontWeight: fontWeights.bold,
+    color:      colours.white,
+  },
+
+  quickLabel: {
+    fontSize:     fontSizes.xs,
+    fontWeight:   fontWeights.semiBold,
+    color:        colours.textSecondary,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.5,
+  },
+  tipOptionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.xs },
   tipOption: {
     flex:            1,
     borderWidth:     1.5,
@@ -464,8 +636,6 @@ const styles = StyleSheet.create({
     backgroundColor: colours.background,
   },
   tipOptionSelected:       { backgroundColor: colours.primary, borderColor: colours.primary },
-  tipOptionCustom:         { borderStyle: 'dashed' },
-  tipOptionCustomSelected: { borderStyle: 'solid' },
   tipOptionText:           { fontSize: fontSizes.sm, fontWeight: fontWeights.bold, color: colours.textSecondary },
   tipOptionTextSelected:   { color: colours.white },
   tipHint:                 { fontSize: fontSizes.xs, color: colours.textSecondary, marginTop: spacing.xs },
