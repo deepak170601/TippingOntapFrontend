@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, RefreshControl,
-  TouchableOpacity, StyleSheet, StatusBar,
+  TouchableOpacity, StyleSheet, StatusBar, Alert,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -10,6 +10,7 @@ import type { MainTabParamList } from '../../navigation/MainNavigator';
 import type { RootNavigationProp } from '../../navigation/AppNavigator';
 import { useAuthContext } from '../../context/AuthContext';
 import api, { Event }    from '../../services/api';
+import { syncEventReminders } from '../../services/notifications';
 import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
@@ -40,6 +41,14 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
       ]);
       setActiveEvents(eventsRes.active     ?? []);
       setUpcomingEvents(eventsRes.upcoming ?? []);
+
+      // Keep the phone's scheduled reminders in step with the server's idea of
+      // what is upcoming. This runs on every focus, which is what makes an
+      // edited, cancelled or already-started event stop reminding — the sync is
+      // idempotent and does no network of its own, so it is free to repeat.
+      // Deliberately not awaited: it never throws and the screen must not wait
+      // on the notification subsystem to render.
+      syncEventReminders(eventsRes.upcoming ?? []).catch(() => { /* never fatal */ });
       setPastEvents((eventsRes.past        ?? []).slice(0, 2));
       setTotalProfit(statsRes.totalProfit  ?? 0);
     } catch (err) {
@@ -64,12 +73,38 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
 
   // ── Navigation handlers ────────────────────────────────────
   const handleViewTip = (event: Event): void => {
-    rootNavigation.navigate('ActiveEvent', { event });
+    rootNavigation.navigate('TipCollection', { event });
   };
 
-  const handleEndEvent = async (event: Event): Promise<void> => {
-    try { await api.endEvent(event.id); loadData(); }
-    catch { /* silent */ }
+  // Ending an event is one tap, irreversible, and stops the merchant taking
+  // money — so it asks first. The failure used to be swallowed too, which is
+  // worse than it sounds: the card stays on screen looking unchanged, so the
+  // merchant reads a failed request as a successful one and walks away from an
+  // event that is still live.
+  const handleEndEvent = (event: Event): void => {
+    Alert.alert(
+      'End this event?',
+      `"${event.name}" will move to Past Events and stop accepting tips. `
+      + 'This cannot be undone.',
+      [
+        { text: 'No, keep it running', style: 'cancel' },
+        {
+          text:    'Yes, end it',
+          style:   'destructive',
+          onPress: async () => {
+            try {
+              await api.endEvent(event.id);
+              await loadData();
+            } catch (err) {
+              Alert.alert(
+                'Could not end event',
+                err instanceof Error ? err.message : 'Please try again.',
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   const firstName = user?.fullName?.split(' ')[0] ?? 'Alex';
