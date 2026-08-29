@@ -220,8 +220,15 @@ export interface AuthResponse {
 export interface Event {
   id:            string;
   name:          string;
+  // Formatted for display by the backend — "Jun 17, 2029" and "7:00 PM".
   date:          string;
   time?:         string;
+
+  // The same two values machine-readable, local wall-clock, no zone:
+  // "2029-06-17" and "19:00". Added for the reminder scheduler, which cannot
+  // compute with the display strings above. See src/services/notifications.ts.
+  dateIso?:      string;
+  timeIso?:      string;
   location:      string;
   description?:  string;
   tipOptions:    number[];

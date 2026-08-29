@@ -10,6 +10,7 @@ import type { RootNavigationProp } from '../../navigation/AppNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
 import api from '../../services/api';
+import { requestNotificationPermission } from '../../services/notifications';
 
 type NavProp = RootNavigationProp;
 
@@ -130,6 +131,13 @@ const CreateEventScreen = (): React.JSX.Element => {
       });
 
       setForm(INITIAL_FORM);
+
+      // Ask for notification permission here rather than at launch. A cold
+      // "Allow notifications?" on first open is the prompt everyone denies;
+      // asked one second after scheduling an event, what it is for is obvious.
+      // Android 12 and below grant it at install, so this shows nothing there.
+      // Declining is fine — the sync on the next Home focus simply no-ops.
+      await requestNotificationPermission();
 
       Alert.alert(
         '✅ Event Created!',

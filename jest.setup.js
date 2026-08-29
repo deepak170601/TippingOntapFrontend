@@ -75,3 +75,26 @@ jest.mock('@stripe/stripe-react-native', () => ({
 // Pulled in by the Stripe SDK for its authenticated screens, never rendered
 // directly by our code.
 jest.mock('react-native-webview', () => ({ WebView: () => null }));
+
+// ── Notifee ──────────────────────────────────────────────────
+// Same class of problem as the Stripe SDKs above: the module reaches for its
+// native side at import time, and AuthContext -> notifications.ts pulls it into
+// every test that mounts App. Every method resolves to the shape the real one
+// returns so services/notifications.ts takes its normal path rather than its
+// catch blocks.
+jest.mock('@notifee/react-native', () => ({
+  __esModule: true,
+  default: {
+    createChannel:              jest.fn().mockResolvedValue('event-reminders'),
+    requestPermission:          jest.fn().mockResolvedValue({ authorizationStatus: 1 }),
+    getNotificationSettings:    jest.fn().mockResolvedValue({ authorizationStatus: 1 }),
+    createTriggerNotification:  jest.fn().mockResolvedValue(undefined),
+    getTriggerNotificationIds:  jest.fn().mockResolvedValue([]),
+    cancelTriggerNotifications: jest.fn().mockResolvedValue(undefined),
+  },
+  AndroidImportance:   { HIGH: 4 },
+  AuthorizationStatus: { DENIED: 0, AUTHORIZED: 1, PROVISIONAL: 2 },
+  RepeatFrequency:     { NONE: -1 },
+  TriggerType:         { TIMESTAMP: 0 },
+  AlarmType:           { SET_AND_ALLOW_WHILE_IDLE: 1 },
+}));

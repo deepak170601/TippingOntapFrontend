@@ -5,6 +5,7 @@ import React, {
 } from 'react';
 import { Alert, AppState } from 'react-native';
 import storage, { ConnectSnapshot } from '../services/storage';
+import { cancelAllEventReminders } from '../services/notifications';
 import api, { AuthResponse, ConnectStatus } from '../services/api';
 import { registerSessionExpiredHandler } from '../services/api';
 
@@ -104,6 +105,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = useCallback(async (): Promise<void> => {
     await api.logout();
+    // Reminders are scheduled on the device, not scoped to a session, so they
+    // would happily fire for the previous merchant's events at whoever signs in
+    // next. Cancelled before the session state clears, while we still own them.
+    await cancelAllEventReminders();
     setUser(null);
     setConnect(null);   // scoped to one Stripe account — never outlive the session
     setStatus(null);

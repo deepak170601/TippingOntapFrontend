@@ -1,10 +1,15 @@
 // src/screens/dashboard/SettingsScreen.tsx
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator, ScrollView,
+  Alert, ActivityIndicator, ScrollView, Switch, Linking,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
+import {
+  areRemindersEnabled, setRemindersEnabled,
+  hasNotificationPermission, requestNotificationPermission,
+  cancelAllEventReminders,
+} from '../../services/notifications';
 import Header from '../../components/common/Header';
 import {
   colours, fontSizes, fontWeights,
@@ -14,6 +19,54 @@ import {
 const SettingsScreen = (): React.JSX.Element => {
   const { logout, user }             = useAuthContext();
   const [loggingOut, setLoggingOut]  = useState<boolean>(false);
+
+  // ── Event reminders ───────────────────────────────────────
+  // Two separate things decide whether a reminder ever arrives: this in-app
+  // preference, and the OS permission. The switch shows the AND of them,
+  // because a switch that reads "on" while Android is dropping every
+  // notification is a lie the merchant only discovers by missing an event.
+  const [remindersOn, setRemindersOn] = useState<boolean>(false);
+
+  const refreshReminderState = useCallback(async (): Promise<void> => {
+    const [pref, granted] = await Promise.all([
+      areRemindersEnabled(),
+      hasNotificationPermission(),
+    ]);
+    setRemindersOn(pref && granted);
+  }, []);
+
+  useEffect(() => { refreshReminderState(); }, [refreshReminderState]);
+
+  const handleToggleReminders = async (next: boolean): Promise<void> => {
+    if (!next) {
+      setRemindersOn(false);
+      await setRemindersEnabled(false);
+      await cancelAllEventReminders();
+      return;
+    }
+
+    // Turning it on has to clear the OS permission too. requestPermission only
+    // shows a dialog the first time; after a denial Android returns silently,
+    // so from then on the only route is Settings and we have to say so rather
+    // than leave the switch flicking back with no explanation.
+    await setRemindersEnabled(true);
+    const granted = (await hasNotificationPermission())
+      || (await requestNotificationPermission());
+
+    setRemindersOn(granted);
+
+    if (!granted) {
+      Alert.alert(
+        'Notifications are turned off',
+        'Android is blocking notifications for this app, so event reminders '
+        + 'cannot be delivered. You can turn them back on in system settings.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => { Linking.openSettings(); } },
+        ],
+      );
+    }
+  };
 
   const handleLogout = (): void => {
     Alert.alert(
@@ -35,7 +88,6 @@ const SettingsScreen = (): React.JSX.Element => {
   };
 
   const MENU_ITEMS = [
-    { icon: '🔔', label: 'Notifications',    sub: 'Manage your alerts' },
     { icon: '🔐', label: 'Security',          sub: 'Password & 2FA' },
     { icon: '💳', label: 'Payment Methods',   sub: 'Connected readers' },
     { icon: '📄', label: 'Terms of Service',  sub: 'Legal information' },
@@ -66,6 +118,27 @@ const SettingsScreen = (): React.JSX.Element => {
         {/* Menu items */}
         <Text style={styles.sectionLabel}>PREFERENCES</Text>
         <View style={styles.menuCard}>
+
+          {/* Event reminders — a real switch, not a row that goes nowhere */}
+          <View style={styles.menuItem}>
+            <View style={styles.menuIconWrap}>
+              <Text style={styles.menuIcon}>🔔</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuLabel}>Event Reminders</Text>
+              <Text style={styles.menuSub}>
+                A day before and 30 minutes before each event
+              </Text>
+            </View>
+            <Switch
+              value={remindersOn}
+              onValueChange={handleToggleReminders}
+              trackColor={{ false: colours.border, true: colours.primaryLight }}
+              thumbColor={remindersOn ? colours.primary : colours.surface}
+            />
+          </View>
+          <View style={styles.menuDivider} />
+
           {MENU_ITEMS.map((item, index) => (
             <React.Fragment key={item.label}>
               <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
