@@ -254,6 +254,20 @@ export const syncEventReminders = async (events: Event[]): Promise<void> => {
   }
 };
 
+// How many reminders are actually armed on this device right now.
+//
+// Exists because everything else about this feature is invisible until it
+// either fires or fails to. Surfaced in Settings so "did that event schedule
+// anything?" has an answer that does not involve waiting a day to find out.
+export const scheduledReminderCount = async (): Promise<number> => {
+  try {
+    const ids = await notifee.getTriggerNotificationIds();
+    return ids.filter(id => id.startsWith(ID_PREFIX)).length;
+  } catch {
+    return 0;
+  }
+};
+
 // ── Cancellation ──────────────────────────────────────────────
 export const cancelEventReminders = async (eventId: string): Promise<void> => {
   try {
@@ -281,6 +295,7 @@ export const cancelAllEventReminders = async (): Promise<void> => {
 };
 
 export default {
+  scheduledReminderCount,
   requestNotificationPermission,
   hasNotificationPermission,
   areRemindersEnabled,

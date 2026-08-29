@@ -12,6 +12,7 @@ import type { MainTabParamList } from '../../navigation/MainNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius, shadows } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
 import api from '../../services/api';
+import { syncEventReminders } from '../../services/notifications';
 
 type NavProp = RootNavigationProp;
 
@@ -170,6 +171,18 @@ const CreateEventScreen = (): React.JSX.Element => {
       const created = form.name.trim();
       setForm(INITIAL_FORM);
       setCreatedName(created);
+
+      // Arm this event's reminders now, rather than waiting for the Home tab to
+      // be focused. Sync used to live only in HomeScreen.loadData, so creating
+      // an event and then tapping "View Upcoming Events" scheduled nothing at
+      // all — the reminders did not exist until the merchant happened to go
+      // home. Refetches because the response carries the id and status the
+      // scheduler needs, which createEvent's own body does not give us here.
+      // Not awaited: the success sheet must not wait on it, and the next Home
+      // focus is still a backstop if it fails.
+      api.getEvents()
+        .then(res => syncEventReminders(res.upcoming ?? []))
+        .catch(() => { /* Home focus will pick it up */ });
 
     } catch (err) {
       Alert.alert('Failed to Create', err instanceof Error ? err.message : 'Please try again.');

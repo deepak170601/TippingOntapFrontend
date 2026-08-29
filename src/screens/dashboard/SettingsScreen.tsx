@@ -1,5 +1,6 @@
 // src/screens/dashboard/SettingsScreen.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Alert, ActivityIndicator, ScrollView, Switch, Linking,
@@ -8,7 +9,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import {
   areRemindersEnabled, setRemindersEnabled,
   hasNotificationPermission, requestNotificationPermission,
-  cancelAllEventReminders,
+  cancelAllEventReminders, scheduledReminderCount,
 } from '../../services/notifications';
 import Header from '../../components/common/Header';
 import {
@@ -27,15 +28,25 @@ const SettingsScreen = (): React.JSX.Element => {
   // notification is a lie the merchant only discovers by missing an event.
   const [remindersOn, setRemindersOn] = useState<boolean>(false);
 
+  // How many are actually armed right now. Without this the feature is
+  // invisible until it either fires or fails to, and "did that event schedule
+  // anything?" can only be answered by waiting a day to find out.
+  const [armed, setArmed] = useState<number>(0);
+
   const refreshReminderState = useCallback(async (): Promise<void> => {
-    const [pref, granted] = await Promise.all([
+    const [pref, granted, count] = await Promise.all([
       areRemindersEnabled(),
       hasNotificationPermission(),
+      scheduledReminderCount(),
     ]);
     setRemindersOn(pref && granted);
+    setArmed(count);
   }, []);
 
-  useEffect(() => { refreshReminderState(); }, [refreshReminderState]);
+  // On focus, not on mount. Settings is a tab and stays mounted, so a
+  // mount-only read would show the count from whenever the app started and go
+  // stale the moment an event is created or ends.
+  useFocusEffect(useCallback(() => { refreshReminderState(); }, [refreshReminderState]));
 
   const handleToggleReminders = async (next: boolean): Promise<void> => {
     if (!next) {
@@ -128,6 +139,11 @@ const SettingsScreen = (): React.JSX.Element => {
               <Text style={styles.menuLabel}>Event Reminders</Text>
               <Text style={styles.menuSub}>
                 A day before and 30 minutes before each event
+              </Text>
+              <Text style={styles.menuSub}>
+                {remindersOn
+                  ? `${armed} scheduled right now`
+                  : 'Off — nothing is scheduled'}
               </Text>
             </View>
             <Switch

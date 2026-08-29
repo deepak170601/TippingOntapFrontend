@@ -11,7 +11,7 @@
 // in Sydney. Asserting against a locally-constructed Date is what pins it.
 import notifee from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { syncEventReminders } from '../src/services/notifications';
+import { syncEventReminders, scheduledReminderCount } from '../src/services/notifications';
 import type { Event } from '../src/services/api';
 
 const mockNotifee = notifee as unknown as {
@@ -126,5 +126,14 @@ describe('syncEventReminders', () => {
     await syncEventReminders([baseEvent]);
 
     expect(mockNotifee.createTriggerNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('scheduledReminderCount', () => {
+  it('counts only our own reminders', async () => {
+    mockNotifee.getTriggerNotificationIds.mockResolvedValue([
+      'evt:a:day', 'evt:a:soon', 'some-other-feature',
+    ]);
+    await expect(scheduledReminderCount()).resolves.toBe(2);
   });
 });
