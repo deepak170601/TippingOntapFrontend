@@ -419,6 +419,14 @@ export const api = {
   capturePaymentIntent: (paymentIntentId: string, eventId: string) =>
     request<void>('POST', '/capture_payment_intent', { paymentIntentId, eventId }, true),
 
+  // TEMPORARY — test mode only, see SIMULATED_PAYMENTS_ENABLED in config/env.
+  // Creates and confirms the charge server-side with Stripe's test card, so no
+  // reader, no NFC and no Terminal SDK are involved. Returns an intent awaiting
+  // capture, exactly like createPaymentIntent, so the caller finishes through
+  // the same capturePaymentIntent above and the tip is recorded identically.
+  simulatePaymentIntent: (amountCents: number, eventId: string) =>
+    request<PaymentIntentData>('POST', '/simulate_payment_intent', { amount: amountCents, eventId }, true),
+
   // ── Stripe Connect ─────────────────────────────────────────────
   // Two ways into onboarding, and both are load-bearing.
   //

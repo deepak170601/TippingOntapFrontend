@@ -152,12 +152,16 @@ const TipCollectionScreen = (): React.JSX.Element => {
 
   // What the customer should be doing, in three states rather than five.
   // 'collecting' is the only one that asks anything of them.
-  const phaseLabel = paymentState === 'processing'
-    ? 'Completing payment…'
-    : paymentState === 'collecting'
-      // Nothing to hold up to a simulated reader — it presents its own card.
-      ? (simulating ? 'Presenting a test card…' : 'Hold the card near the top of the phone')
-      : 'Getting ready…';
+  // The simulated path never reaches 'collecting' — there is no card to hold up
+  // to anything, the backend charges a test card directly — so it gets its own
+  // label rather than borrowing one that describes a tap.
+  const phaseLabel = simulating
+    ? 'Charging a test card…'
+    : paymentState === 'processing'
+      ? 'Completing payment…'
+      : paymentState === 'collecting'
+        ? 'Hold the card near the top of the phone'
+        : 'Getting ready…';
 
   const overlayVisible = submitting || outcome !== null;
 
@@ -254,8 +258,8 @@ const TipCollectionScreen = (): React.JSX.Element => {
             >
               <Text style={styles.simBtnText}>🧪  Simulate Payment</Text>
               <Text style={styles.simBtnSub}>
-                Test mode only — no card is read, but the charge, fee and payout
-                are real
+                Test mode only — no reader or NFC, but the charge, fee and
+                payout are real
               </Text>
             </TouchableOpacity>
           )}
