@@ -37,7 +37,13 @@ import notifee, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Event } from './api';
 
-const CHANNEL_ID   = 'event-reminders';
+// Versioned rather than 'event-reminders' plain. A channel's sound cannot be
+// changed after it is first created — Android locks it, and neither Notifee
+// nor this app can override that — so the only way to turn sound on for
+// someone who already has the app installed is a new channel id. Bump this
+// suffix again if a channel property that matters ever needs to change after
+// people already have the old one.
+const CHANNEL_ID   = 'event-reminders-v2';
 const ENABLED_KEY  = 'notif_event_reminders_enabled';
 
 // Every notification this module owns is `evt:<eventId>:<kind>`. The prefix is
@@ -101,15 +107,23 @@ export const setRemindersEnabled = async (enabled: boolean): Promise<void> => {
 };
 
 // ── Channel ───────────────────────────────────────────────────
-// Idempotent — creating an existing channel updates it rather than erroring.
 // Must exist before any notification is posted on Android 8+, or the OS drops
-// it silently.
+// it silently. Calling this again with the same id is a harmless no-op — but
+// it is exactly that, a no-op, not an update. On Android 8+ every property
+// below is fixed at the moment a channel id is first created on a device, and
+// the OS enforces that regardless of what this app asks for afterwards. That
+// is why sound not being set here originally meant no reminder ever had a
+// sound: Notifee's channel default is silence, not the system default, and
+// once that first silent channel existed on a phone there was no way back —
+// only a new id, above, could add sound for someone who already had it.
 const ensureChannel = async (): Promise<void> => {
   await notifee.createChannel({
-    id:         CHANNEL_ID,
-    name:       'Event reminders',
+    id:          CHANNEL_ID,
+    name:        'Event reminders',
     description: 'Reminders before an event you have scheduled starts.',
-    importance: AndroidImportance.HIGH,
+    importance:  AndroidImportance.HIGH,
+    sound:       'default',
+    vibration:   true,
   });
 };
 
