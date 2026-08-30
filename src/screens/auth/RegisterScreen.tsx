@@ -17,6 +17,7 @@ import  useAuth from '../../hooks/useAuth';
 import {Image} from 'react-native';
 import NoticeSheet from '../../components/common/NoticeSheet';
 import { formatUsPhone } from '../../utils/formatPhone';
+import { isPlausibleEmail } from '../../utils/validateEmail';
 
 const { height } = Dimensions.get('window');
 
@@ -184,7 +185,7 @@ const RegisterScreen = (): React.JSX.Element => {
 
   // ── Send email OTP ────────────────────────────────────────
   const handleSendEmailOtp = async (): Promise<void> => {
-    if (!form.email.includes('@')) { setErrors(e => ({ ...e, email: 'Enter a valid email.' })); return; }
+    if (!isPlausibleEmail(form.email)) { setErrors(e => ({ ...e, email: 'Enter a valid email.' })); return; }
     setErrors(e => ({ ...e, email: undefined }));
     setEmailOtpLoading(true);
     try {
