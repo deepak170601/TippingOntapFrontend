@@ -20,10 +20,10 @@
 // Progress is reported as what the customer has to do, not as what the SDK is
 // doing. "Looking for reader" and "Connecting to reader" are true and useless:
 // nobody tipping five dollars needs to know a Terminal reader was discovered.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, Modal, ActivityIndicator, TextInput,
+  StatusBar, Modal, ActivityIndicator, TextInput, Animated,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -189,22 +189,44 @@ const TipCollectionScreen = (): React.JSX.Element => {
 
   const overlayVisible = submitting || outcome !== null;
 
+  // Pop the result circle in rather than let it appear flat with the rest of
+  // the card. Same spring TipResultScreen uses for its check mark, so a
+  // successful tip reads consistently wherever it is shown.
+  const resultScale = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (outcome === null) { resultScale.setValue(0); return; }
+    Animated.spring(resultScale, {
+      toValue: 1, friction: 4, tension: 110, useNativeDriver: true,
+    }).start();
+  }, [outcome, resultScale]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── Header ──────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: topInset + spacing.sm }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          disabled={submitting}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={styles.backArrow}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{event.name}</Text>
-        <View style={styles.headerRight} />
+      {/* ── Header — same layered-gradient trick as the earnings card on
+          ActiveEventScreen, since this app has no gradient library installed */}
+      <View style={styles.header}>
+        <View style={styles.headerGradientA} />
+        <View style={styles.headerGradientB} />
+
+        <View style={[styles.headerRow, { paddingTop: topInset + spacing.sm }]}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            disabled={submitting}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.backArrow}>‹</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{event.name}</Text>
+            {event.location ? (
+              <Text style={styles.headerSubtitle} numberOfLines={1}>📍 {event.location}</Text>
+            ) : null}
+          </View>
+          <View style={styles.headerRight} />
+        </View>
       </View>
 
       {gate === 'blocked' ? (
@@ -222,6 +244,7 @@ const TipCollectionScreen = (): React.JSX.Element => {
       ) : (
         <View style={styles.body}>
           <Text style={styles.prompt}>Choose a tip</Text>
+          <Text style={styles.promptSub}>Pick an amount or enter your own</Text>
 
           {/* ── Merchant's presets, plus Custom ────────────── */}
           <View style={styles.tipGrid}>
@@ -234,6 +257,12 @@ const TipCollectionScreen = (): React.JSX.Element => {
                   onPress={() => { setCustomSelected(false); setSelectedCents(cents); }}
                   activeOpacity={0.85}
                 >
+                  {active && (
+                    <View style={styles.tipBtnCheck}>
+                      <Text style={styles.tipBtnCheckText}>✓</Text>
+                    </View>
+                  )}
+                  <Text style={styles.tipBtnCoin}>🪙</Text>
                   <Text style={[styles.tipBtnText, active && styles.tipBtnTextActive]}>
                     {fmt(cents)}
                   </Text>
@@ -242,10 +271,20 @@ const TipCollectionScreen = (): React.JSX.Element => {
             })}
 
             <TouchableOpacity
-              style={[styles.tipBtn, customSelected && styles.tipBtnActive]}
+              style={[
+                styles.tipBtn,
+                styles.tipBtnCustom,
+                customSelected && styles.tipBtnActive,
+              ]}
               onPress={selectCustom}
               activeOpacity={0.85}
             >
+              {customSelected && (
+                <View style={styles.tipBtnCheck}>
+                  <Text style={styles.tipBtnCheckText}>✓</Text>
+                </View>
+              )}
+              <Text style={styles.tipBtnCoin}>✏️</Text>
               <Text style={[styles.tipBtnText, customSelected && styles.tipBtnTextActive]}>
                 Custom
               </Text>
@@ -268,7 +307,7 @@ const TipCollectionScreen = (): React.JSX.Element => {
           )}
 
           {tipOptions.length === 0 && !customSelected && (
-            <Text style={styles.blockedBody}>
+            <Text style={styles.noPresetsHint}>
               This event has no preset amounts — tap Custom to enter one.
             </Text>
           )}
@@ -282,6 +321,7 @@ const TipCollectionScreen = (): React.JSX.Element => {
             disabled={selectedCents === null || submitting}
             activeOpacity={0.85}
           >
+            <Text style={styles.payBtnIcon}>💳</Text>
             <Text style={styles.payBtnText}>
               {selectedCents === null
                 ? 'Tap to Pay'
@@ -337,12 +377,13 @@ const TipCollectionScreen = (): React.JSX.Element => {
               onPress={clearOutcome}
               activeOpacity={1}
             >
-              <View style={[
+              <Animated.View style={[
                 styles.resultCircle,
                 outcome.success ? styles.resultSuccess : styles.resultFail,
+                { transform: [{ scale: resultScale }] },
               ]}>
                 <Text style={styles.resultIcon}>{outcome.success ? '✓' : '✕'}</Text>
-              </View>
+              </Animated.View>
 
               <Text style={styles.resultTitle}>
                 {outcome.success ? 'Payment successful' : 'Payment failed'}
@@ -367,22 +408,44 @@ const TipCollectionScreen = (): React.JSX.Element => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colours.background },
 
+  // Two overlaid tints rather than a flat fill — the same trick
+  // ActiveEventScreen's earnings card uses, since no gradient library is
+  // installed. overflow hidden keeps the diagonal patch from spilling past
+  // the header's own rounded bottom corners.
   header: {
+    overflow:        'hidden',
+    backgroundColor: colours.primary,
+    borderBottomLeftRadius:  radius.xl,
+    borderBottomRightRadius: radius.xl,
+    ...shadows.blue,
+  },
+  headerGradientA: { ...StyleSheet.absoluteFillObject, backgroundColor: colours.primaryLight },
+  headerGradientB: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colours.primaryDark,
+    opacity:         0.55,
+    borderTopLeftRadius: radius.xl * 2,
+  },
+  headerRow: {
     flexDirection:     'row',
     alignItems:        'center',
     justifyContent:    'space-between',
-    backgroundColor:   colours.primary,
     paddingHorizontal: spacing.base,
-    paddingVertical:   spacing.md,
+    paddingBottom:      spacing.lg,
   },
   backBtn:     { padding: spacing.xs },
   backArrow:   { fontSize: 32, color: colours.white, lineHeight: 36 },
+  headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: {
-    flex:       1,
     textAlign:  'center',
     fontSize:   fontSizes.lg,
     fontWeight: fontWeights.bold,
     color:      colours.white,
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize:  fontSizes.xs,
+    color:     'rgba(255,255,255,0.8)',
   },
   headerRight: { width: 32 },
 
@@ -421,11 +484,17 @@ const styles = StyleSheet.create({
   body:   { flex: 1, padding: spacing.base },
   spacer: { flex: 1 },
   prompt: {
-    fontSize:     fontSizes.xxl,
-    fontWeight:   fontWeights.extraBold,
-    color:        colours.textPrimary,
+    fontSize:   fontSizes.xxl,
+    fontWeight: fontWeights.extraBold,
+    color:      colours.textPrimary,
+    textAlign:  'center',
+    marginTop:  spacing.xl,
+  },
+  promptSub: {
+    fontSize:     fontSizes.sm,
+    color:        colours.textSecondary,
     textAlign:    'center',
-    marginTop:    spacing.xl,
+    marginTop:    spacing.xs,
     marginBottom: spacing.xl,
   },
 
@@ -439,20 +508,46 @@ const styles = StyleSheet.create({
     width:           '46%',
     minWidth:        130,
     borderWidth:     2,
-    borderColor:     colours.primary,
+    borderColor:     colours.borderBlue,
     borderRadius:    radius.lg,
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
     alignItems:      'center',
     backgroundColor: colours.surface,
+    position:        'relative',
     ...shadows.card,
   },
-  tipBtnActive:     { backgroundColor: colours.primary },
+  tipBtnCustom: { borderStyle: 'dashed' },
+  tipBtnActive: {
+    backgroundColor: colours.primary,
+    borderColor:     colours.primary,
+    ...shadows.blue,
+  },
+  tipBtnCoin: {
+    fontSize:     fontSizes.lg,
+    marginBottom: spacing.xs,
+  },
   tipBtnText: {
     fontSize:   fontSizes.xxl,
     fontWeight: fontWeights.extraBold,
     color:      colours.primary,
   },
   tipBtnTextActive: { color: colours.white },
+  tipBtnCheck: {
+    position:        'absolute',
+    top:             spacing.xs,
+    right:           spacing.xs,
+    width:           22,
+    height:          22,
+    borderRadius:    11,
+    backgroundColor: colours.accent,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  tipBtnCheckText: {
+    fontSize:   11,
+    fontWeight: fontWeights.bold,
+    color:      colours.white,
+  },
 
   customRow: {
     flexDirection:     'row',
@@ -463,6 +558,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginTop:         spacing.md,
     backgroundColor:   colours.surface,
+    ...shadows.card,
   },
   customCurrency: {
     fontSize:    fontSizes.xxl,
@@ -477,16 +573,26 @@ const styles = StyleSheet.create({
     color:           colours.textPrimary,
     paddingVertical: spacing.lg,
   },
+  noPresetsHint: {
+    marginTop:  spacing.md,
+    fontSize:   fontSizes.sm,
+    color:      colours.textSecondary,
+    textAlign:  'center',
+    lineHeight: 20,
+  },
 
   payBtn: {
+    flexDirection:   'row',
     backgroundColor: colours.primary,
-    borderRadius:    radius.md,
+    borderRadius:    radius.round,
     paddingVertical: spacing.lg,
     alignItems:      'center',
+    justifyContent:  'center',
     marginBottom:    spacing.lg,
     ...shadows.blue,
   },
   payBtnDisabled: { opacity: 0.45 },
+  payBtnIcon:     { fontSize: fontSizes.lg, marginRight: spacing.sm },
   payBtnText: {
     fontSize:   fontSizes.lg,
     fontWeight: fontWeights.bold,
