@@ -1,8 +1,15 @@
 // src/screens/dashboard/TipCollectionScreen.tsx
 //
 // The screen a customer actually looks at while an event is running: the tip
-// amounts the merchant chose when they created the event, and one button to
-// tap a card. Nothing else.
+// amounts the merchant chose when they created the event, and nothing else.
+//
+// There is no "Tap to Pay" button. Picking an amount IS the action — tapping a
+// preset starts the charge immediately, and typing a custom amount then
+// pressing Done on the keypad does the same. A confirm step here does not
+// protect anyone from anything: nobody taps $5 by accident, and every real
+// mistake (wrong amount, changed their mind) is a card that was never
+// presented, not a payment that has to be undone. A second tap only added a
+// second thing to get right under a customer's eyes.
 //
 // ActiveEventScreen is still in the tree and still works — it is the merchant's
 // view of an event, with running totals, the earnings breakdown and End Event.
@@ -132,31 +139,40 @@ const TipCollectionScreen = (): React.JSX.Element => {
     return () => clearTimeout(timer);
   }, [outcome, clearOutcome]);
 
-  // Selecting the Custom tile clears any preset; typing in it keeps the tile
-  // selected but only counts as a real amount once it parses to something
-  // payable — the Tap to Pay button below stays disabled on "0", "", or ".".
+  // Selecting the Custom tile only opens the input — typing an amount is not
+  // itself the confirmation, since a customer keying in "12" one digit at a
+  // time cannot be charged $1 then have it corrected to $12. Committing the
+  // amount happens in onCustomSubmit below, once.
   const selectCustom = (): void => {
     setCustomSelected(true);
-    setSelectedCents(null);
+    setCustomText('');
   };
 
-  const onCustomChange = (text: string): void => {
-    setCustomText(text);
-    const dollars = parseFloat(text);
-    setSelectedCents(Number.isFinite(dollars) && dollars > 0
+  // Cents if customText currently parses to a chargeable amount, else null.
+  // Recomputed rather than kept in state — the text is the only source of
+  // truth, so there is nothing to let drift out of sync with it.
+  const parsedCustomCents = (): number | null => {
+    const dollars = parseFloat(customText);
+    return Number.isFinite(dollars) && dollars > 0
       ? Math.round(dollars * 100)
-      : null);
+      : null;
   };
 
   // ── Take the tip ───────────────────────────────────────────
   //
+  // Takes the amount as an argument rather than reading selectedCents from
+  // state, because the two moments this is called — a preset tap, a keypad
+  // submit — both know the exact amount they mean at the instant of the call,
+  // and a state read one tick later is exactly the kind of gap a fast second
+  // tap turns into a race.
+  //
   // No navigation on either branch. Success and failure both land on the same
   // overlay over this screen, which then clears itself — so the merchant never
   // has to hand the phone back, tap Done, and hand it forward again.
-  const handleTap = async (simulated: boolean = false): Promise<void> => {
-    if (selectedCents === null || submitting) { return; }
+  const handleTap = async (amountCents: number, simulated: boolean = false): Promise<void> => {
+    if (submitting) { return; }
 
-    const amountCents = selectedCents;
+    setSelectedCents(amountCents);
     setSubmitting(true);
     setSimulating(simulated);
     try {
@@ -172,6 +188,16 @@ const TipCollectionScreen = (): React.JSX.Element => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Fires on the keypad's Done/Go key. Silently does nothing on an amount
+  // that has not parsed yet — Android's decimal-pad can fire this on a stray
+  // keypress on some devices, and a no-op is the only safe response to a
+  // submit with nothing to submit.
+  const onCustomSubmit = (simulated: boolean = false): void => {
+    const cents = parsedCustomCents();
+    if (cents === null) { return; }
+    handleTap(cents, simulated);
   };
 
   // What the customer should be doing, in three states rather than five.
@@ -244,31 +270,34 @@ const TipCollectionScreen = (): React.JSX.Element => {
       ) : (
         <View style={styles.body}>
           <Text style={styles.prompt}>Choose a tip</Text>
-          <Text style={styles.promptSub}>Pick an amount or enter your own</Text>
+          <Text style={styles.promptSub}>
+            {SIMULATED_PAYMENTS_ENABLED
+              ? 'Tap an amount to charge it — long-press for a test charge'
+              : 'Tap an amount to charge it'}
+          </Text>
 
-          {/* ── Merchant's presets, plus Custom ────────────── */}
+          {/* ── Merchant's presets, plus Custom — tapping one charges it
+              immediately. There is nothing to confirm afterward: the tap
+              itself is the confirmation. Disabled once a charge is already in
+              flight, so a second tap during the overlay cannot start a second
+              one. Long-press exists only for the temporary simulated path
+              below, and only while it is switched on. */}
           <View style={styles.tipGrid}>
-            {tipOptions.map((cents, i) => {
-              const active = !customSelected && selectedCents === cents;
-              return (
-                <TouchableOpacity
-                  key={`${cents}-${i}`}
-                  style={[styles.tipBtn, active && styles.tipBtnActive]}
-                  onPress={() => { setCustomSelected(false); setSelectedCents(cents); }}
-                  activeOpacity={0.85}
-                >
-                  {active && (
-                    <View style={styles.tipBtnCheck}>
-                      <Text style={styles.tipBtnCheckText}>✓</Text>
-                    </View>
-                  )}
-                  <Text style={styles.tipBtnCoin}>🪙</Text>
-                  <Text style={[styles.tipBtnText, active && styles.tipBtnTextActive]}>
-                    {fmt(cents)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {tipOptions.map((cents, i) => (
+              <TouchableOpacity
+                key={`${cents}-${i}`}
+                style={styles.tipBtn}
+                onPress={() => { setCustomSelected(false); handleTap(cents); }}
+                onLongPress={SIMULATED_PAYMENTS_ENABLED
+                  ? () => { setCustomSelected(false); handleTap(cents, true); }
+                  : undefined}
+                disabled={submitting}
+                activeOpacity={0.6}
+              >
+                <Text style={styles.tipBtnCoin}>🪙</Text>
+                <Text style={styles.tipBtnText}>{fmt(cents)}</Text>
+              </TouchableOpacity>
+            ))}
 
             <TouchableOpacity
               style={[
@@ -277,13 +306,9 @@ const TipCollectionScreen = (): React.JSX.Element => {
                 customSelected && styles.tipBtnActive,
               ]}
               onPress={selectCustom}
-              activeOpacity={0.85}
+              disabled={submitting}
+              activeOpacity={0.7}
             >
-              {customSelected && (
-                <View style={styles.tipBtnCheck}>
-                  <Text style={styles.tipBtnCheckText}>✓</Text>
-                </View>
-              )}
               <Text style={styles.tipBtnCoin}>✏️</Text>
               <Text style={[styles.tipBtnText, customSelected && styles.tipBtnTextActive]}>
                 Custom
@@ -291,18 +316,35 @@ const TipCollectionScreen = (): React.JSX.Element => {
             </TouchableOpacity>
           </View>
 
+          {/* ── Custom amount — Done on the keypad charges it. The inline ✓
+              is a deliberate second way in, not a second step: Android's
+              decimal-pad keyboard does not reliably expose a submit key on
+              every device, so onSubmitEditing alone would leave some
+              customers with a filled-in amount and no way to send it. */}
           {customSelected && (
             <View style={styles.customRow}>
               <Text style={styles.customCurrency}>$</Text>
               <TextInput
                 style={styles.customInput}
                 value={customText}
-                onChangeText={onCustomChange}
+                onChangeText={setCustomText}
+                onSubmitEditing={() => onCustomSubmit()}
                 keyboardType="decimal-pad"
+                returnKeyType="done"
                 placeholder="0.00"
                 placeholderTextColor={colours.textSecondary}
+                editable={!submitting}
                 autoFocus
               />
+              <TouchableOpacity
+                style={[styles.customConfirm, parsedCustomCents() === null && styles.customConfirmDisabled]}
+                onPress={() => onCustomSubmit()}
+                onLongPress={SIMULATED_PAYMENTS_ENABLED ? () => onCustomSubmit(true) : undefined}
+                disabled={parsedCustomCents() === null || submitting}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.customConfirmText}>✓</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -310,45 +352,6 @@ const TipCollectionScreen = (): React.JSX.Element => {
             <Text style={styles.noPresetsHint}>
               This event has no preset amounts — tap Custom to enter one.
             </Text>
-          )}
-
-          <View style={styles.spacer} />
-
-          {/* ── Tap to Pay ──────────────────────────────── */}
-          <TouchableOpacity
-            style={[styles.payBtn, selectedCents === null && styles.payBtnDisabled]}
-            onPress={() => handleTap(false)}
-            disabled={selectedCents === null || submitting}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.payBtnIcon}>💳</Text>
-            <Text style={styles.payBtnText}>
-              {selectedCents === null
-                ? 'Tap to Pay'
-                : `Tap to Pay  ${fmt(selectedCents)}`}
-            </Text>
-          </TouchableOpacity>
-
-          {/* ── TEMPORARY: simulated payment ──────────────────
-              Same money path with Stripe's simulated reader standing in for the
-              NFC radio, so the ledger can be checked on a device that cannot do
-              Tap to Pay. Everything after the card read is real: the
-              PaymentIntent, the application fee, the capture and the tip row.
-              Remove by setting SIMULATED_PAYMENTS_ENABLED false in
-              src/config/env.ts. Styled to look like scaffolding, not a feature. */}
-          {SIMULATED_PAYMENTS_ENABLED && (
-            <TouchableOpacity
-              style={[styles.simBtn, selectedCents === null && styles.payBtnDisabled]}
-              onPress={() => handleTap(true)}
-              disabled={selectedCents === null || submitting}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.simBtnText}>🧪  Simulate Payment</Text>
-              <Text style={styles.simBtnSub}>
-                Test mode only — no reader or NFC, but the charge, fee and
-                payout are real
-              </Text>
-            </TouchableOpacity>
           )}
         </View>
       )}
@@ -482,7 +485,6 @@ const styles = StyleSheet.create({
   },
 
   body:   { flex: 1, padding: spacing.base },
-  spacer: { flex: 1 },
   prompt: {
     fontSize:   fontSizes.xxl,
     fontWeight: fontWeights.extraBold,
@@ -532,22 +534,6 @@ const styles = StyleSheet.create({
     color:      colours.primary,
   },
   tipBtnTextActive: { color: colours.white },
-  tipBtnCheck: {
-    position:        'absolute',
-    top:             spacing.xs,
-    right:           spacing.xs,
-    width:           22,
-    height:          22,
-    borderRadius:    11,
-    backgroundColor: colours.accent,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  tipBtnCheckText: {
-    fontSize:   11,
-    fontWeight: fontWeights.bold,
-    color:      colours.white,
-  },
 
   customRow: {
     flexDirection:     'row',
@@ -573,56 +559,29 @@ const styles = StyleSheet.create({
     color:           colours.textPrimary,
     paddingVertical: spacing.lg,
   },
+  // The reliable way to submit a custom amount — see the comment above the
+  // TextInput on why onSubmitEditing alone is not enough on Android.
+  customConfirm: {
+    width:           40,
+    height:          40,
+    borderRadius:    20,
+    backgroundColor: colours.primary,
+    alignItems:      'center',
+    justifyContent:  'center',
+    marginLeft:      spacing.sm,
+  },
+  customConfirmDisabled: { backgroundColor: colours.border },
+  customConfirmText: {
+    fontSize:   fontSizes.lg,
+    fontWeight: fontWeights.bold,
+    color:      colours.white,
+  },
   noPresetsHint: {
     marginTop:  spacing.md,
     fontSize:   fontSizes.sm,
     color:      colours.textSecondary,
     textAlign:  'center',
     lineHeight: 20,
-  },
-
-  payBtn: {
-    flexDirection:   'row',
-    backgroundColor: colours.primary,
-    borderRadius:    radius.round,
-    paddingVertical: spacing.lg,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginBottom:    spacing.lg,
-    ...shadows.blue,
-  },
-  payBtnDisabled: { opacity: 0.45 },
-  payBtnIcon:     { fontSize: fontSizes.lg, marginRight: spacing.sm },
-  payBtnText: {
-    fontSize:   fontSizes.lg,
-    fontWeight: fontWeights.bold,
-    color:      colours.white,
-  },
-
-  // Deliberately unlike every other button in the app — dashed, warning
-  // coloured, no shadow. It should read as a tool left on the workbench.
-  simBtn: {
-    borderWidth:       1.5,
-    borderStyle:       'dashed',
-    borderColor:       colours.warning,
-    borderRadius:      radius.md,
-    paddingVertical:   spacing.md,
-    paddingHorizontal: spacing.base,
-    alignItems:        'center',
-    marginBottom:      spacing.lg,
-    backgroundColor:   colours.surface,
-  },
-  simBtnText: {
-    fontSize:   fontSizes.base,
-    fontWeight: fontWeights.bold,
-    color:      colours.warning,
-  },
-  simBtnSub: {
-    marginTop:  spacing.xs,
-    fontSize:   fontSizes.xs,
-    color:      colours.textSecondary,
-    textAlign:  'center',
-    lineHeight: 15,
   },
 
   scrim: {
