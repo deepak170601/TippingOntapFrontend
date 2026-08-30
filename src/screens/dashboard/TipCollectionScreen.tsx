@@ -86,6 +86,15 @@ const TipCollectionScreen = (): React.JSX.Element => {
   const [customSelected, setCustomSelected] = useState<boolean>(false);
   const [customText,     setCustomText]     = useState<string>('');
 
+  // ── TEMPORARY: real vs. simulated ────────────────────────────
+  // A toggle rather than a long-press, so which mode is active is something
+  // to look at instead of something to remember. It sits above the grid and
+  // governs every tap below it — presets and the custom keypad alike — so
+  // there is exactly one place that decides, not one decision per amount.
+  // Only ever rendered while SIMULATED_PAYMENTS_ENABLED is on, so it and
+  // everything that reads it disappear together when that flag goes false.
+  const [simulateMode, setSimulateMode] = useState<boolean>(false);
+
   const [gate,        setGate]        = useState<Gate>('checking');
   const [gateMessage, setGateMessage] = useState<string>('');
 
@@ -190,14 +199,16 @@ const TipCollectionScreen = (): React.JSX.Element => {
     }
   };
 
-  // Fires on the keypad's Done/Go key. Silently does nothing on an amount
-  // that has not parsed yet — Android's decimal-pad can fire this on a stray
-  // keypress on some devices, and a no-op is the only safe response to a
-  // submit with nothing to submit.
-  const onCustomSubmit = (simulated: boolean = false): void => {
+  // Fires on the keypad's Done/Go key — confirmed on-device to reach here
+  // reliably, which is why there is no separate on-screen confirm button
+  // beside the input any more. Silently does nothing on an amount that has
+  // not parsed yet — decimal-pad can still fire this on a stray keypress on
+  // some devices, and a no-op is the only safe response to a submit with
+  // nothing to submit.
+  const onCustomSubmit = (): void => {
     const cents = parsedCustomCents();
     if (cents === null) { return; }
-    handleTap(cents, simulated);
+    handleTap(cents, simulateMode);
   };
 
   // What the customer should be doing, in three states rather than five.
@@ -269,28 +280,63 @@ const TipCollectionScreen = (): React.JSX.Element => {
         </View>
       ) : (
         <View style={styles.body}>
-          <Text style={styles.prompt}>Choose a tip</Text>
-          <Text style={styles.promptSub}>
-            {SIMULATED_PAYMENTS_ENABLED
-              ? 'Tap an amount to charge it — long-press for a test charge'
-              : 'Tap an amount to charge it'}
-          </Text>
+          <View style={styles.promptRow}>
+            <View style={styles.promptTextWrap}>
+              <Text style={styles.prompt}>Choose a tip</Text>
+              <Text style={styles.promptSub}>Tap an amount to charge it</Text>
+            </View>
+
+            {/* ── TEMPORARY: real vs. simulated ──────────────
+                Governs every tap below — presets and the custom keypad alike.
+                Only rendered while SIMULATED_PAYMENTS_ENABLED is on, so it
+                disappears from the build entirely once that flag goes false;
+                nothing else needs to change at that point. Dashed border and
+                warning colour on the Simulated side, matching how the old
+                standalone Simulate Payment button read as scaffolding rather
+                than a finished feature. */}
+            {SIMULATED_PAYMENTS_ENABLED && (
+              <View style={styles.modeToggle}>
+                <TouchableOpacity
+                  style={[styles.modeOption, !simulateMode && styles.modeOptionActiveReal]}
+                  onPress={() => setSimulateMode(false)}
+                  disabled={submitting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.modeOptionText, !simulateMode && styles.modeOptionTextActive]}>
+                    💳 Real
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeOption, simulateMode && styles.modeOptionActiveSim]}
+                  onPress={() => setSimulateMode(true)}
+                  disabled={submitting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.modeOptionText, simulateMode && styles.modeOptionTextActive]}>
+                    🧪 Test
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {simulateMode && (
+            <Text style={styles.simModeHint}>
+              Test mode — no reader or NFC, but the charge, fee and payout are real
+            </Text>
+          )}
 
           {/* ── Merchant's presets, plus Custom — tapping one charges it
-              immediately. There is nothing to confirm afterward: the tap
-              itself is the confirmation. Disabled once a charge is already in
-              flight, so a second tap during the overlay cannot start a second
-              one. Long-press exists only for the temporary simulated path
-              below, and only while it is switched on. */}
+              immediately, in whichever mode the toggle above is set to.
+              There is nothing to confirm afterward: the tap itself is the
+              confirmation. Disabled once a charge is already in flight, so a
+              second tap during the overlay cannot start a second one. */}
           <View style={styles.tipGrid}>
             {tipOptions.map((cents, i) => (
               <TouchableOpacity
                 key={`${cents}-${i}`}
                 style={styles.tipBtn}
-                onPress={() => { setCustomSelected(false); handleTap(cents); }}
-                onLongPress={SIMULATED_PAYMENTS_ENABLED
-                  ? () => { setCustomSelected(false); handleTap(cents, true); }
-                  : undefined}
+                onPress={() => { setCustomSelected(false); handleTap(cents, simulateMode); }}
                 disabled={submitting}
                 activeOpacity={0.6}
               >
@@ -316,11 +362,9 @@ const TipCollectionScreen = (): React.JSX.Element => {
             </TouchableOpacity>
           </View>
 
-          {/* ── Custom amount — Done on the keypad charges it. The inline ✓
-              is a deliberate second way in, not a second step: Android's
-              decimal-pad keyboard does not reliably expose a submit key on
-              every device, so onSubmitEditing alone would leave some
-              customers with a filled-in amount and no way to send it. */}
+          {/* ── Custom amount — Done on the keypad charges it. Confirmed
+              on-device that this reaches onSubmitEditing reliably, so there
+              is no separate confirm control beside the input any more. */}
           {customSelected && (
             <View style={styles.customRow}>
               <Text style={styles.customCurrency}>$</Text>
@@ -328,7 +372,7 @@ const TipCollectionScreen = (): React.JSX.Element => {
                 style={styles.customInput}
                 value={customText}
                 onChangeText={setCustomText}
-                onSubmitEditing={() => onCustomSubmit()}
+                onSubmitEditing={onCustomSubmit}
                 keyboardType="decimal-pad"
                 returnKeyType="done"
                 placeholder="0.00"
@@ -336,15 +380,6 @@ const TipCollectionScreen = (): React.JSX.Element => {
                 editable={!submitting}
                 autoFocus
               />
-              <TouchableOpacity
-                style={[styles.customConfirm, parsedCustomCents() === null && styles.customConfirmDisabled]}
-                onPress={() => onCustomSubmit()}
-                onLongPress={SIMULATED_PAYMENTS_ENABLED ? () => onCustomSubmit(true) : undefined}
-                disabled={parsedCustomCents() === null || submitting}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.customConfirmText}>✓</Text>
-              </TouchableOpacity>
             </View>
           )}
 
@@ -484,20 +519,65 @@ const styles = StyleSheet.create({
     color:      colours.primary,
   },
 
-  body:   { flex: 1, padding: spacing.base },
+  body: { flex: 1, padding: spacing.base },
+
+  // promptRow puts the heading and the temporary mode toggle side by side
+  // when there is room, and lets them wrap onto their own lines on a narrow
+  // phone rather than clipping either — a toggle squeezed against the title
+  // is worse than one sitting under it.
+  promptRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    flexWrap:       'wrap',
+    gap:            spacing.sm,
+    marginTop:      spacing.xl,
+    marginBottom:   spacing.lg,
+  },
+  promptTextWrap: { flexShrink: 1 },
   prompt: {
     fontSize:   fontSizes.xxl,
     fontWeight: fontWeights.extraBold,
     color:      colours.textPrimary,
-    textAlign:  'center',
-    marginTop:  spacing.xl,
   },
   promptSub: {
-    fontSize:     fontSizes.sm,
-    color:        colours.textSecondary,
+    fontSize:  fontSizes.sm,
+    color:     colours.textSecondary,
+    marginTop: spacing.xs,
+  },
+
+  // Dashed border and warning colour on the active Simulated side — same
+  // "scaffolding, not a feature" language the old standalone Simulate button
+  // used, kept even though the button itself is gone.
+  modeToggle: {
+    flexDirection:   'row',
+    borderWidth:     1.5,
+    borderStyle:     'dashed',
+    borderColor:     colours.warning,
+    borderRadius:    radius.round,
+    padding:         3,
+    backgroundColor: colours.surface,
+  },
+  modeOption: {
+    paddingVertical:   spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius:      radius.round,
+  },
+  modeOptionActiveReal: { backgroundColor: colours.primary },
+  modeOptionActiveSim:  { backgroundColor: colours.warning },
+  modeOptionText: {
+    fontSize:   fontSizes.xs,
+    fontWeight: fontWeights.bold,
+    color:      colours.textSecondary,
+  },
+  modeOptionTextActive: { color: colours.white },
+
+  simModeHint: {
+    marginTop:    spacing.sm,
+    marginBottom: spacing.md,
+    fontSize:     fontSizes.xs,
+    color:        colours.warning,
     textAlign:    'center',
-    marginTop:    spacing.xs,
-    marginBottom: spacing.xl,
   },
 
   tipGrid: {
@@ -558,23 +638,6 @@ const styles = StyleSheet.create({
     fontWeight:      fontWeights.extraBold,
     color:           colours.textPrimary,
     paddingVertical: spacing.lg,
-  },
-  // The reliable way to submit a custom amount — see the comment above the
-  // TextInput on why onSubmitEditing alone is not enough on Android.
-  customConfirm: {
-    width:           40,
-    height:          40,
-    borderRadius:    20,
-    backgroundColor: colours.primary,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginLeft:      spacing.sm,
-  },
-  customConfirmDisabled: { backgroundColor: colours.border },
-  customConfirmText: {
-    fontSize:   fontSizes.lg,
-    fontWeight: fontWeights.bold,
-    color:      colours.white,
   },
   noPresetsHint: {
     marginTop:  spacing.md,
