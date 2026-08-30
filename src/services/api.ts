@@ -161,9 +161,20 @@ const request = async <T>(
 
   // ── 401 refresh flow ───────────────────────────────────────
   if (response.status === 401 && requiresAuth && !isRetry) {
+    // refreshOnce() throwing and refreshOnce() resolving false used to mean
+    // the same thing here: log the merchant out. They are not the same thing.
+    // A thrown error means the /auth/refresh call itself never got a clean
+    // answer — no connection, a timeout, or the backend's machine waking from
+    // Fly's min_machines_running = 0 taking a moment — none of which says
+    // anything about whether the refresh token is still good. Only a real
+    // 401 from that endpoint says that, and api.refresh() below now returns
+    // false for exactly that case and only that case. So a thrown error here
+    // surfaces as an ordinary failed request, session left alone, rather than
+    // clearing a merchant's session because their train went through a tunnel.
     const refreshed = await refreshOnce();
     if (refreshed) { return request<T>(method, path, body, true, true); }
-    // Refresh failed — notify AuthContext to clear session globally
+    // Reached the backend, and it said the refresh token itself is invalid or
+    // expired — this is the one case a global logout is correct.
     if (sessionExpiredHandler) { await sessionExpiredHandler(); }
     throw new Error('SESSION_EXPIRED');
   }
@@ -362,13 +373,26 @@ export const api = {
 
   // ── Auth — Refresh / Logout ───────────────────────────────────
   refresh: async (): Promise<boolean> => {
+    const refreshToken = await storage.getRefreshToken();
+    if (!refreshToken) { return false; }
+
     try {
-      const refreshToken = await storage.getRefreshToken();
-      if (!refreshToken) { return false; }
       const data = await request<AuthResponse>('POST', '/auth/refresh', { refreshToken });
       await storage.saveTokens(data.accessToken, data.refreshToken);
       return true;
-    } catch { return false; }
+    } catch (err) {
+      // POST /auth/refresh answers a genuinely invalid or expired refresh
+      // token with 401 (AuthController.cs) — that is the only failure this
+      // catches into `false`, because it is the only one that actually means
+      // "this session is over". Everything else — no connection, a timed-out
+      // request, a 502/503 while the backend's machine is waking up, a 429 —
+      // used to be caught here too and treated exactly like an invalid token,
+      // which force-logged a merchant out over a network hiccup rather than
+      // anything about their session. Those now rethrow, so the request()
+      // caller above sees an ordinary failure and the session stays intact.
+      if (err instanceof ApiError && err.status === 401) { return false; }
+      throw err;
+    }
   },
 
   logout: async (): Promise<void> => {

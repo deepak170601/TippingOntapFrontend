@@ -83,7 +83,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const token = await storage.getAccessToken();
         if (!token) { return; }
-        const refreshed = await api.refresh();
+
+        // api.refresh() resolving false means the backend looked at the
+        // refresh token and rejected it — that is a real logout. api.refresh()
+        // throwing means the network call itself never landed: no connection,
+        // a timeout, or the backend's Fly machine waking from
+        // min_machines_running = 0. App launch is exactly when that is most
+        // likely, since the phone and the backend have both plausibly been
+        // idle. Treating a throw as a logout used to sign a merchant out on
+        // any such launch; the stored token is kept instead, and if it really
+        // has expired the first authenticated request hits 401 and drives the
+        // same refresh-then-retry flow, in api.ts, that makes this same
+        // distinction.
+        let refreshed: boolean;
+        try {
+          refreshed = await api.refresh();
+        } catch {
+          refreshed = true;
+        }
+
         if (refreshed) {
           const [storedUser, storedConnect] = await Promise.all([
             storage.getUser(),
@@ -94,8 +112,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           await storage.clearAll();
         }
-      } catch {
-        await storage.clearAll();
       } finally {
         setLoading(false);
       }
