@@ -21,15 +21,43 @@ type FilterTab = 'All' | 'This Month' | 'Last Month';
 
 const FILTER_TABS: FilterTab[] = ['All', 'This Month', 'Last Month'];
 
-// ── Derive month bucket from a date string ────────────────────
-const getMonthTag = (dateStr: string): 'this' | 'last' | 'older' => {
-  const now       = new Date();
-  const d         = new Date(dateStr);
-  const sameYear  = d.getFullYear() === now.getFullYear();
-  const sameMonth = d.getMonth()    === now.getMonth();
-  const lastMonth = d.getMonth()    === now.getMonth() - 1 && sameYear;
-  if (sameYear && sameMonth) { return 'this'; }
-  if (lastMonth)             { return 'last'; }
+// ── Which month did this event fall in? ────────────────────────
+//
+// dateIso ("2029-06-17", local wall-clock, no zone — see the note on Event in
+// api.ts) is the source, not the display date string, and not handed to
+// new Date() directly. That constructor treats a bare "YYYY-MM-DD" as UTC
+// midnight per spec, so in any timezone behind UTC an event on the 1st of a
+// month reads back as the 30th or 31st of the one before — the same trap
+// services/notifications.ts already builds around. Built from numeric parts
+// instead. The display date string is only a fallback for an event with no
+// dateIso, which should not happen for anything created after that field
+// shipped.
+const eventDate = (event: Event): Date => {
+  if (event.dateIso) {
+    const [y, m, d] = event.dateIso.split('-').map(Number);
+    if (y && m && d) { return new Date(y, m - 1, d); }
+  }
+  return new Date(event.date);
+};
+
+// A single "months since year zero" number turns the comparison into plain
+// subtraction, so a January event correctly counts December as last month.
+// Comparing d.getMonth() === now.getMonth() - 1 does not: in January,
+// now.getMonth() - 1 is -1, which no real month is ever equal to, so every
+// December event silently vanished from "Last Month" the moment the calendar
+// turned over — the exact moment a merchant is most likely to go looking for
+// last month's earnings.
+const monthIndex = (d: Date): number => d.getFullYear() * 12 + d.getMonth();
+
+// Exported for __tests__/PastEventsScreen.test.ts — the year-boundary case is
+// exactly the kind of bug that only shows up once a year, so it needs a test
+// that doesn't wait for January to catch a regression.
+export const getMonthTag = (event: Event): 'this' | 'last' | 'older' => {
+  const d = eventDate(event);
+  if (Number.isNaN(d.getTime())) { return 'older'; }
+  const diff = monthIndex(new Date(Date.now())) - monthIndex(d);
+  if (diff === 0) { return 'this'; }
+  if (diff === 1) { return 'last'; }
   return 'older';
 };
 
@@ -61,8 +89,8 @@ const PastEventsScreen = (): React.JSX.Element => {
 
   // ── Filter by tab ──────────────────────────────────────────
   const tabFiltered = events.filter(e => {
-    if (activeTab === 'This Month') { return getMonthTag(e.date) === 'this'; }
-    if (activeTab === 'Last Month') { return getMonthTag(e.date) === 'last'; }
+    if (activeTab === 'This Month') { return getMonthTag(e) === 'this'; }
+    if (activeTab === 'Last Month') { return getMonthTag(e) === 'last'; }
     return true;
   });
 
