@@ -4,6 +4,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   StatusBar, ScrollView, Alert, Modal, FlatList,
   KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions,
+  Linking,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +15,8 @@ import { US_STATES, USState } from '../../constants/usStates';
 import api, { ApiError } from '../../services/api';
 import  useAuth from '../../hooks/useAuth';
 import {Image} from 'react-native';
+import NoticeSheet from '../../components/common/NoticeSheet';
+import { formatUsPhone } from '../../utils/formatPhone';
 
 const { height } = Dimensions.get('window');
 
@@ -73,6 +76,16 @@ const RegisterScreen = (): React.JSX.Element => {
   const [stateModal,  setStateModal]  = useState<boolean>(false);
   const [stateSearch, setStateSearch] = useState<string>('');
 
+  // Shown in place of the old Alert.alert whenever the phone number entered
+  // here already has an account — see handleSendPhoneOtp and handleVerifyPhone.
+  const [alreadyExistsNotice, setAlreadyExistsNotice] = useState<boolean>(false);
+
+  // Same notice, same reason, for the email field — see handleSendEmailOtp and
+  // handleVerifyEmail. Used to be an inline field error; a taken email is a
+  // dead end for this form the same way a taken phone number is, and both
+  // read the same way to whoever hits them.
+  const [emailExistsNotice, setEmailExistsNotice] = useState<boolean>(false);
+
   // ── Countdown for phone OTP ───────────────────────────────
   useEffect(() => {
     if (phoneStep !== 'otp' || phoneCountdown <= 0) { return; }
@@ -114,17 +127,11 @@ const RegisterScreen = (): React.JSX.Element => {
       setPhoneCountdown(60);
       setTimeout(() => phoneInputRefs.current[0]?.focus(), 300);
     } catch (err) {
-      // 409 — the number is already registered. Offer the way out rather than
-      // just reporting the problem; they are one tap from where they need to be.
+      // 409 — the number is already registered. The header's back arrow and
+      // the "Log in" link further down are both still right there, so the
+      // notice only has to say why, not also carry them anywhere.
       if (err instanceof ApiError && err.status === 409) {
-        Alert.alert(
-          'Account Already Exists',
-          err.message,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign In', onPress: () => navigation.goBack() },
-          ],
-        );
+        setAlreadyExistsNotice(true);
         return;
       }
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send code.');
@@ -161,11 +168,7 @@ const RegisterScreen = (): React.JSX.Element => {
         // Previously this silently called loginWithTokens and dropped the person
         // on a dashboard. Landing somewhere you did not ask to go is worse than
         // being told why, even when the destination is legitimately yours.
-        Alert.alert(
-          'Account Already Exists',
-          'An account already exists with this phone number. Please sign in instead.',
-          [{ text: 'Sign In', onPress: () => navigation.goBack() }],
-        );
+        setAlreadyExistsNotice(true);
         return;
       }
       setPhone(`+1${cleaned}`);
@@ -191,14 +194,14 @@ const RegisterScreen = (): React.JSX.Element => {
       setShowEmailOtp(true);
       setTimeout(() => emailInputRefs.current[0]?.focus(), 300);
     } catch (err) {
-      // 409 means the address already has an account. It belongs on the email
-      // field, not in a modal: the merchant has to edit that field to continue,
-      // and an alert they dismiss leaves the screen looking unchanged. The
-      // backend now reports this here rather than at /auth/register, which is
-      // the whole point — it used to surface only after the entire form was
-      // filled in and both codes verified.
+      // 409 means the address already has an account, and — same as the phone
+      // check — no OTP was sent for it; SendEmailOtp on the backend refuses
+      // before ever calling the OTP service. The backend reports this here
+      // rather than at /auth/register, which is the whole point — it used to
+      // surface only after the entire form was filled in and both codes
+      // verified.
       if (err instanceof ApiError && err.status === 409) {
-        setErrors(e => ({ ...e, email: err.message }));
+        setEmailExistsNotice(true);
         return;
       }
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send code.');
@@ -229,11 +232,12 @@ const RegisterScreen = (): React.JSX.Element => {
       setShowEmailOtp(false);
     } catch (err) {
       // Someone else can finish signing up with this address during the ten
-      // minutes the code stays valid. Close the dialog and send them back to the
-      // field — retyping the code cannot fix an address that is now taken.
+      // minutes the code stays valid. Close the OTP entry and send them back
+      // to the field — retyping the code cannot fix an address that is now
+      // taken.
       if (err instanceof ApiError && err.status === 409) {
         setShowEmailOtp(false);
-        setErrors(e => ({ ...e, email: err.message }));
+        setEmailExistsNotice(true);
         return;
       }
       Alert.alert('Failed', err instanceof Error ? err.message : 'Invalid code.');
@@ -331,8 +335,8 @@ const RegisterScreen = (): React.JSX.Element => {
             <TextInput
               style={regStyles.phoneInput}
               value={phone}
-              onChangeText={v => setPhone(v)}
-              placeholder="Enter phone number"
+              onChangeText={v => setPhone(formatUsPhone(v))}
+              placeholder="(555) 555-5555"
               placeholderTextColor="#9CA3AF"
               keyboardType="phone-pad"
               maxLength={14}
@@ -411,8 +415,21 @@ const RegisterScreen = (): React.JSX.Element => {
             </TouchableOpacity>
           </View>
 
-          <Text style={regStyles.poweredBy}>Powered by CyberClouds</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://cyberclouds.com')}>
+            <Text style={regStyles.poweredBy}>Powered by CyberClouds</Text>
+          </TouchableOpacity>
         </ScrollView>
+
+        {/* Closes and stays put, same as the equivalent notice on Login — the
+            back arrow and the "Log in" link above are the way out, not a
+            button baked into a notice that might fire while nobody is
+            looking at the screen. */}
+        <NoticeSheet
+          visible={alreadyExistsNotice}
+          title="Account Already Exists"
+          message="An account already exists with this phone number. Please sign in instead."
+          onClose={() => setAlreadyExistsNotice(false)}
+        />
       </KeyboardAvoidingView>
     );
   }
@@ -469,13 +486,13 @@ const RegisterScreen = (): React.JSX.Element => {
                 placeholderTextColor={colours.textSecondary}
                 keyboardType="email-address"
                 autoCapitalize="none"
-                editable={!emailVerified}
+                editable={!emailVerified && !showEmailOtp}
               />
               {emailVerified ? (
                 <View style={styles.verifiedChip}>
                   <Text style={styles.verifiedChipText}>✓ Verified</Text>
                 </View>
-              ) : (
+              ) : !showEmailOtp ? (
                 <TouchableOpacity
                   style={[styles.verifyBtn, emailOtpLoading && styles.btnDisabled]}
                   onPress={handleSendEmailOtp}
@@ -486,9 +503,48 @@ const RegisterScreen = (): React.JSX.Element => {
                     {emailOtpLoading ? '…' : 'Verify'}
                   </Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
           </Field>
+
+          {/* ── Email code entry — inline, not a modal ──────
+              Matches how the phone step above handles its own OTP: it
+              appears in the flow of the form and disappears once verified,
+              rather than covering the screen. Nothing about the code entry
+              itself changed — same auto-submit on the sixth digit, same
+              resend cooldown — only where it renders. */}
+          {showEmailOtp && !emailVerified && (
+            <View style={styles.inlineOtpWrap}>
+              <Text style={styles.inlineOtpLabel}>
+                Enter the 6-digit code sent to{' '}
+                <Text style={styles.highlight}>{form.email}</Text>
+              </Text>
+
+              <View style={styles.otpRow}>
+                {emailOtp.map((digit, i) => (
+                  <TextInput key={i} ref={ref => { emailInputRefs.current[i] = ref; }}
+                    style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
+                    value={digit} onChangeText={text => handleEmailOtpChange(text, i)}
+                    onKeyPress={({ nativeEvent }) => {
+                      if (nativeEvent.key === 'Backspace' && !emailOtp[i] && i > 0)
+                        { emailInputRefs.current[i - 1]?.focus(); }
+                    }}
+                    keyboardType="number-pad" maxLength={1} selectTextOnFocus textAlign="center" />
+                ))}
+              </View>
+
+              <View style={styles.inlineOtpActions}>
+                {emailCountdown > 0
+                  ? <Text style={styles.resendWait}>Resend in {emailCountdown}s</Text>
+                  : <TouchableOpacity onPress={handleResendEmail} disabled={emailResending}>
+                      <Text style={styles.resendLink}>{emailResending ? 'Sending…' : 'Resend Code'}</Text>
+                    </TouchableOpacity>}
+                <TouchableOpacity onPress={() => setShowEmailOtp(false)}>
+                  <Text style={styles.inlineOtpCancel}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* ── Business Info ──────────────────────────── */}
@@ -520,30 +576,37 @@ const RegisterScreen = (): React.JSX.Element => {
               onChangeText={v => set('address2', v)}
               placeholder="Apt, suite, etc." placeholderTextColor={colours.textSecondary} />
           </Field>
+          {/* City on its own line, State and ZIP sharing the one below —
+              City used to share a row with ZIP while State sat alone
+              underneath, which put State + ZIP (a picker with no keyboard,
+              and the very last text field in the form) as the two fields
+              lowest on screen and most likely to end up behind the
+              keyboard when either was focused with nothing below it to
+              scroll into view. */}
+          <Field label="City" error={errors.city}>
+            <TextInput style={[styles.input, errors.city && styles.inputError]}
+              value={form.city} onChangeText={v => set('city', v)}
+              placeholder="Austin" placeholderTextColor={colours.textSecondary} />
+          </Field>
           <Row>
+            <Field label="State" error={errors.state as string | undefined} flex>
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownRow, errors.state && styles.inputError]}
+                onPress={() => { setStateSearch(''); setStateModal(true); }} activeOpacity={0.7}>
+                <Text style={[styles.dropdownText, !form.state && styles.placeholder]} numberOfLines={1}>
+                  {form.state ? form.state.abbr : 'Select'}
+                </Text>
+                <Text style={styles.dropdownArrow}>▾</Text>
+              </TouchableOpacity>
+            </Field>
+            <View style={{ width: spacing.sm }} />
             <Field label="ZIP" error={errors.zip} flex>
               <TextInput style={[styles.input, errors.zip && styles.inputError]}
                 value={form.zip} onChangeText={v => set('zip', v)}
                 placeholder="12345" placeholderTextColor={colours.textSecondary}
                 keyboardType="number-pad" maxLength={10} />
             </Field>
-            <View style={{ width: spacing.sm }} />
-            <Field label="City" error={errors.city} flex>
-              <TextInput style={[styles.input, errors.city && styles.inputError]}
-                value={form.city} onChangeText={v => set('city', v)}
-                placeholder="Austin" placeholderTextColor={colours.textSecondary} />
-            </Field>
           </Row>
-          <Field label="State" error={errors.state as string | undefined}>
-            <TouchableOpacity
-              style={[styles.input, styles.dropdownRow, errors.state && styles.inputError]}
-              onPress={() => { setStateSearch(''); setStateModal(true); }} activeOpacity={0.7}>
-              <Text style={[styles.dropdownText, !form.state && styles.placeholder]}>
-                {form.state ? `${form.state.name} (${form.state.abbr})` : 'Select state'}
-              </Text>
-              <Text style={styles.dropdownArrow}>▾</Text>
-            </TouchableOpacity>
-          </Field>
         </View>
 
         <TouchableOpacity
@@ -557,53 +620,14 @@ const RegisterScreen = (): React.JSX.Element => {
         <View style={{ height: spacing.xxxl }} />
       </ScrollView>
 
-      {/* ── Email OTP Modal ───────────────────────────── */}
-      <Modal visible={showEmailOtp} animationType="fade" transparent
-        onRequestClose={() => setShowEmailOtp(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Verify Email</Text>
-            <Text style={styles.modalSubtitle}>
-              Enter the 6-digit code sent to{'\n'}
-              <Text style={styles.highlight}>{form.email}</Text>
-            </Text>
-
-            <View style={styles.otpRow}>
-              {emailOtp.map((digit, i) => (
-                <TextInput key={i} ref={ref => { emailInputRefs.current[i] = ref; }}
-                  style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
-                  value={digit} onChangeText={text => handleEmailOtpChange(text, i)}
-                  onKeyPress={({ nativeEvent }) => {
-                    if (nativeEvent.key === 'Backspace' && !emailOtp[i] && i > 0)
-                      { emailInputRefs.current[i - 1]?.focus(); }
-                  }}
-                  keyboardType="number-pad" maxLength={1} selectTextOnFocus textAlign="center" />
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, emailOtpLoading && styles.btnDisabled]}
-              onPress={() => { const c = emailOtp.join(''); if (c.length === OTP_LENGTH) handleVerifyEmail(c); }}
-              disabled={emailOtpLoading} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnText}>
-                {emailOtpLoading ? 'Verifying…' : 'Verify Email'}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={[styles.resendRow, { marginTop: spacing.md }]}>
-              {emailCountdown > 0
-                ? <Text style={styles.resendWait}>Resend in {emailCountdown}s</Text>
-                : <TouchableOpacity onPress={handleResendEmail} disabled={emailResending}>
-                    <Text style={styles.resendLink}>{emailResending ? 'Sending…' : 'Resend Code'}</Text>
-                  </TouchableOpacity>}
-            </View>
-
-            <TouchableOpacity style={styles.modalCancel} onPress={() => setShowEmailOtp(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Closes and stays put, same as the phone-side notice — the email
+          field is right there to edit. */}
+      <NoticeSheet
+        visible={emailExistsNotice}
+        title="Email Already Registered"
+        message="An account already exists with this email address. Please use a different one, or sign in instead."
+        onClose={() => setEmailExistsNotice(false)}
+      />
 
       {/* ── State picker modal ────────────────────────── */}
       <Modal visible={stateModal} animationType="slide" transparent
@@ -703,16 +727,32 @@ const styles = StyleSheet.create({
   primaryBtn:   { width: '100%', backgroundColor: colours.primary, borderRadius: radius.md, paddingVertical: spacing.md + 2, alignItems: 'center', ...shadows.subtle, marginTop: spacing.md },
   btnDisabled:  { opacity: 0.6 },
   primaryBtnText: { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.white },
-  resendRow:    { marginTop: spacing.lg, alignItems: 'center' },
   resendWait:   { fontSize: fontSizes.sm, color: colours.textSecondary },
   resendLink:   { fontSize: fontSizes.sm, fontWeight: fontWeights.bold, color: colours.primary },
-  // Email OTP modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.base },
-  modalCard:    { width: '100%', backgroundColor: colours.surface, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', ...shadows.strong },
-  modalTitle:   { fontSize: fontSizes.xl, fontWeight: fontWeights.extraBold, color: colours.textPrimary, marginBottom: spacing.sm },
-  modalSubtitle:{ fontSize: fontSizes.sm, color: colours.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: spacing.xl },
-  modalCancel:  { marginTop: spacing.md, padding: spacing.sm },
-  modalCancelText: { fontSize: fontSizes.sm, color: colours.textSecondary },
+  // Email code entry — inline, in the card, not a modal. Its own light tint
+  // and left border keep it visually distinct from the fields around it
+  // without covering them.
+  inlineOtpWrap: {
+    marginTop:         spacing.xs,
+    marginBottom:      spacing.md,
+    padding:           spacing.md,
+    borderRadius:      radius.md,
+    borderLeftWidth:   3,
+    borderLeftColor:   colours.primary,
+    backgroundColor:   colours.primaryFade,
+  },
+  inlineOtpLabel: {
+    fontSize:     fontSizes.sm,
+    color:        colours.textSecondary,
+    marginBottom: spacing.md,
+  },
+  inlineOtpActions: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    marginTop:      spacing.md,
+  },
+  inlineOtpCancel: { fontSize: fontSizes.sm, color: colours.textSecondary },
   // State modal
   stateOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   stateSheet:   { backgroundColor: colours.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '80%', paddingBottom: spacing.xxxl },
