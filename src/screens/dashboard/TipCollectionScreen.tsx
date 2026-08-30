@@ -10,12 +10,12 @@
 // card out, which is why this exists as a separate screen rather than as a mode
 // of that one.
 //
-// Two deliberate omissions:
+// No bottom tab bar. The phone gets handed across a counter on this screen;
+// a tab bar is a door into the merchant's earnings and settings.
 //
-//   - No bottom tab bar. The phone gets handed across a counter on this screen;
-//     a tab bar is a door into the merchant's earnings and settings.
-//   - No custom amount. The presets are the whole point, and a custom amount
-//     means a keyboard, which is the slowest thing that can happen at a till.
+// The merchant's presets sit alongside a Custom tile so a customer who wants
+// to type their own amount can, without that being the only option on an
+// event the merchant set up with none.
 //
 // Progress is reported as what the customer has to do, not as what the SDK is
 // doing. "Looking for reader" and "Connecting to reader" are true and useless:
@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, Modal, ActivityIndicator,
+  StatusBar, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -73,6 +73,12 @@ const TipCollectionScreen = (): React.JSX.Element => {
   const [simulating,    setSimulating]    = useState<boolean>(false);
   const [outcome,       setOutcome]       = useState<Outcome | null>(null);
 
+  // Custom is its own tile in the grid, selected the same way a preset is.
+  // Text held separately in dollars-as-typed; parsed to cents only when it
+  // actually needs to become the selected amount.
+  const [customSelected, setCustomSelected] = useState<boolean>(false);
+  const [customText,     setCustomText]     = useState<string>('');
+
   const [gate,        setGate]        = useState<Gate>('checking');
   const [gateMessage, setGateMessage] = useState<string>('');
 
@@ -116,6 +122,8 @@ const TipCollectionScreen = (): React.JSX.Element => {
   const clearOutcome = useCallback((): void => {
     setOutcome(null);
     setSelectedCents(null);
+    setCustomSelected(false);
+    setCustomText('');
   }, []);
 
   useEffect(() => {
@@ -123,6 +131,22 @@ const TipCollectionScreen = (): React.JSX.Element => {
     const timer = setTimeout(clearOutcome, RESULT_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [outcome, clearOutcome]);
+
+  // Selecting the Custom tile clears any preset; typing in it keeps the tile
+  // selected but only counts as a real amount once it parses to something
+  // payable — the Tap to Pay button below stays disabled on "0", "", or ".".
+  const selectCustom = (): void => {
+    setCustomSelected(true);
+    setSelectedCents(null);
+  };
+
+  const onCustomChange = (text: string): void => {
+    setCustomText(text);
+    const dollars = parseFloat(text);
+    setSelectedCents(Number.isFinite(dollars) && dollars > 0
+      ? Math.round(dollars * 100)
+      : null);
+  };
 
   // ── Take the tip ───────────────────────────────────────────
   //
@@ -195,27 +219,19 @@ const TipCollectionScreen = (): React.JSX.Element => {
         <View style={styles.centred}>
           <ActivityIndicator size="large" color={colours.primary} />
         </View>
-      ) : tipOptions.length === 0 ? (
-        <View style={styles.centred}>
-          <Text style={styles.blockedTitle}>No tip amounts</Text>
-          <Text style={styles.blockedBody}>
-            This event was created without any tip amounts, so there is nothing
-            to offer here.
-          </Text>
-        </View>
       ) : (
         <View style={styles.body}>
           <Text style={styles.prompt}>Choose a tip</Text>
 
-          {/* ── Tip amounts, exactly as configured ──────── */}
+          {/* ── Merchant's presets, plus Custom ────────────── */}
           <View style={styles.tipGrid}>
             {tipOptions.map((cents, i) => {
-              const active = selectedCents === cents;
+              const active = !customSelected && selectedCents === cents;
               return (
                 <TouchableOpacity
                   key={`${cents}-${i}`}
                   style={[styles.tipBtn, active && styles.tipBtnActive]}
-                  onPress={() => setSelectedCents(cents)}
+                  onPress={() => { setCustomSelected(false); setSelectedCents(cents); }}
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.tipBtnText, active && styles.tipBtnTextActive]}>
@@ -224,7 +240,38 @@ const TipCollectionScreen = (): React.JSX.Element => {
                 </TouchableOpacity>
               );
             })}
+
+            <TouchableOpacity
+              style={[styles.tipBtn, customSelected && styles.tipBtnActive]}
+              onPress={selectCustom}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.tipBtnText, customSelected && styles.tipBtnTextActive]}>
+                Custom
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {customSelected && (
+            <View style={styles.customRow}>
+              <Text style={styles.customCurrency}>$</Text>
+              <TextInput
+                style={styles.customInput}
+                value={customText}
+                onChangeText={onCustomChange}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={colours.textSecondary}
+                autoFocus
+              />
+            </View>
+          )}
+
+          {tipOptions.length === 0 && !customSelected && (
+            <Text style={styles.blockedBody}>
+              This event has no preset amounts — tap Custom to enter one.
+            </Text>
+          )}
 
           <View style={styles.spacer} />
 
@@ -406,6 +453,30 @@ const styles = StyleSheet.create({
     color:      colours.primary,
   },
   tipBtnTextActive: { color: colours.white },
+
+  customRow: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    borderWidth:       2,
+    borderColor:       colours.primary,
+    borderRadius:      radius.lg,
+    paddingHorizontal: spacing.lg,
+    marginTop:         spacing.md,
+    backgroundColor:   colours.surface,
+  },
+  customCurrency: {
+    fontSize:    fontSizes.xxl,
+    fontWeight:  fontWeights.extraBold,
+    color:       colours.primary,
+    marginRight: spacing.sm,
+  },
+  customInput: {
+    flex:            1,
+    fontSize:        fontSizes.xxl,
+    fontWeight:      fontWeights.extraBold,
+    color:           colours.textPrimary,
+    paddingVertical: spacing.lg,
+  },
 
   payBtn: {
     backgroundColor: colours.primary,

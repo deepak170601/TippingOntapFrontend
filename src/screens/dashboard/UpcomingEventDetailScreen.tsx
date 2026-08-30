@@ -42,30 +42,21 @@ const UpcomingEventDetailScreen = (): React.JSX.Element => {
   const activeTipLabel = TIP_OPTIONS[selectedTip]?.label ?? 'Custom';
 
   // ── Start event ───────────────────────────────────────────
+  // Straight to the tip screen — a merchant who just tapped Start Event is
+  // about to collect a tip, not deciding whether to. "Stay Here" was a choice
+  // nobody needed to be offered, and made the more likely path the one that
+  // needed an extra tap.
   const handleStartEvent = async (): Promise<void> => {
     setIsStarting(true);
     try {
       await api.startEvent(event.id);
 
-      Alert.alert(
-        '🎉 Event Started!',
-        `"${event.name}" is now live.`,
-        [
-          {
-            text: 'Go to Event',
-            // startEvent returns void, so the event in route params still says
-            // 'upcoming'. Hand the collection screen the status the backend now
-            // holds, or it refuses to take tips for an event that just went live.
-            onPress: () => navigation.navigate('TipCollection', {
-              event: { ...event, status: 'active' },
-            }),
-          },
-          {
-            text: 'Stay Here',
-            style: 'cancel',
-          },
-        ]
-      );
+      // startEvent returns void, so the event in route params still says
+      // 'upcoming'. Hand the collection screen the status the backend now
+      // holds, or it refuses to take tips for an event that just went live.
+      navigation.navigate('TipCollection', {
+        event: { ...event, status: 'active' },
+      });
     } catch (err) {
       Alert.alert(
         'Failed to Start',
