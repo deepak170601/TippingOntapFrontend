@@ -339,11 +339,15 @@ export interface VerifyPhoneResponse {
 export const api = {
 
   // ── Auth — Phone OTP ────────────────────────────────────────
-  // intent: 'signup' asks the backend to REFUSE a number that already has an
-  // account, with a 409, instead of treating it as a login. Only the sign-up
-  // screen should pass it. The login screen must not — this is the same endpoint
-  // login uses, and refusing a known number there would lock everyone out.
-  sendPhoneOtp: (phoneNumber: string, intent?: 'signup') =>
+  // Same endpoint, mirror-image refusals depending on who is calling it.
+  // 'signup' asks the backend to refuse a number that already has an account,
+  // with a 409 — otherwise Create Account quietly logs the person in instead.
+  // 'login' asks it to refuse a number that has no account, with a 404 —
+  // otherwise a login attempt sends a real SMS to a number nobody owns and
+  // only admits that after the person has waited for a code that was never
+  // coming. Each screen passes the one that matches what it is doing;
+  // neither should pass the other's.
+  sendPhoneOtp: (phoneNumber: string, intent?: 'signup' | 'login') =>
     request<{ message: string }>('POST', '/auth/send-phone-otp', { phoneNumber, intent }),
 
   verifyPhoneOtp: (phoneNumber: string, code: string) =>

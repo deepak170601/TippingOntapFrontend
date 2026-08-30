@@ -4,18 +4,20 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   StatusBar, KeyboardAvoidingView, Platform,
   ScrollView, ActivityIndicator, Animated, Image,
-  Dimensions,
+  Dimensions, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { colours, fontSizes, fontWeights, spacing, radius } from '../../theme';
-import api from '../../services/api';
+import api, { ApiError } from '../../services/api';
 import useAuth from '../../hooks/useAuth';
+import NoticeSheet from '../../components/common/NoticeSheet';
+import { formatUsPhone } from '../../utils/formatPhone';
 
 type NavProp  = NativeStackNavigationProp<AuthStackParamList>;
 const OTP_LEN = 6;
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 const LoginScreen = (): React.JSX.Element => {
   const navigation          = useNavigation<NavProp>();
@@ -28,6 +30,10 @@ const LoginScreen = (): React.JSX.Element => {
   const [resending, setResending] = useState<boolean>(false);
   const [countdown, setCountdown] = useState<number>(60);
   const [error,     setError]     = useState<string>('');
+
+  // Shown instead of sending an OTP when the number is not registered — see
+  // handleSendOtp, which checks this before anything else.
+  const [noAccountNotice, setNoAccountNotice] = useState<boolean>(false);
 
   const inputRefs    = useRef<(TextInput | null)[]>([]);
   const otpAnim      = useRef(new Animated.Value(0)).current;
@@ -52,6 +58,13 @@ const LoginScreen = (): React.JSX.Element => {
   const e164Phone  = () => `+1${cleanPhone()}`;
 
   // ── Send OTP ──────────────────────────────────────────────
+  //
+  // intent: 'login' asks the backend to check the number is registered BEFORE
+  // it sends anything. A number nobody owns used to get a real SMS anyway,
+  // and the only sign anything was wrong arrived after the person had waited
+  // for a code, typed it in, and reached the verify step — the wrong moment
+  // to learn they needed to sign up first. Now that answer comes back on this
+  // one request, and the popup below stands in its place instead of an OTP.
   const handleSendOtp = async (): Promise<void> => {
     if (cleanPhone().length < 10) {
       setError('Please enter a valid 10-digit phone number.');
@@ -60,13 +73,17 @@ const LoginScreen = (): React.JSX.Element => {
     setError('');
     setLoading(true);
     try {
-      await api.sendPhoneOtp(e164Phone());
+      await api.sendPhoneOtp(e164Phone(), 'login');
       setOtpSent(true);
       setCountdown(60);
       setOtp(Array(OTP_LEN).fill(''));
       showOtpSection();
       setTimeout(() => inputRefs.current[0]?.focus(), 400);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setNoAccountNotice(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to send code.');
     } finally {
       setLoading(false);
@@ -122,12 +139,17 @@ const LoginScreen = (): React.JSX.Element => {
     setResending(true);
     setError('');
     try {
-      await api.sendPhoneOtp(e164Phone());
+      await api.sendPhoneOtp(e164Phone(), 'login');
       setCountdown(60);
       setOtp(Array(OTP_LEN).fill(''));
       inputRefs.current[0]?.focus();
-    } catch { setError('Failed to resend.'); }
-    finally { setResending(false); }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setNoAccountNotice(true);
+        return;
+      }
+      setError('Failed to resend.');
+    } finally { setResending(false); }
   };
 
   return (
@@ -162,8 +184,8 @@ const LoginScreen = (): React.JSX.Element => {
           <TextInput
             style={styles.phoneInput}
             value={phone}
-            onChangeText={v => { setPhone(v); setError(''); }}
-            placeholder="Enter phone number"
+            onChangeText={v => { setPhone(formatUsPhone(v)); setError(''); }}
+            placeholder="(555) 555-5555"
             placeholderTextColor="#9CA3AF"
             keyboardType="phone-pad"
             maxLength={14}
@@ -180,7 +202,7 @@ const LoginScreen = (): React.JSX.Element => {
           disabled={loading || (otpSent && countdown > 0)}
           activeOpacity={0.7}
         >
-          {loading && !otpSent ? (
+          {(loading && !otpSent) || resending ? (
             <ActivityIndicator size="small" color={colours.primary} />
           ) : (
             <Text style={[
@@ -254,8 +276,22 @@ const LoginScreen = (): React.JSX.Element => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.poweredBy}>Powered by CyberClouds</Text>
+        <TouchableOpacity onPress={() => Linking.openURL('https://cyberclouds.com')}>
+          <Text style={styles.poweredBy}>Powered by CyberClouds</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Closes and stays put — it does not also navigate to Register.
+          Auto-close fires with nobody necessarily watching the screen, and a
+          notice that silently carried them to a different screen on a timer
+          would be a stranger kind of surprise than the one it exists to
+          prevent. The "Sign up" link above stays the one way there. */}
+      <NoticeSheet
+        visible={noAccountNotice}
+        title="No Account Found"
+        message="We couldn't find an account with this phone number. Please sign up first."
+        onClose={() => setNoAccountNotice(false)}
+      />
     </KeyboardAvoidingView>
   );
 };
