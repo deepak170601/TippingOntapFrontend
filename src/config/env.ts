@@ -42,19 +42,30 @@ export const isProduction = env.name === 'production';
 // ─────────────────────────────────────────────────────────────
 // TEMPORARY — simulated payments
 //
-// Shows a second button on the tip screen that runs the whole money path
-// against Stripe's simulated reader instead of the NFC radio: a real
-// PaymentIntent, a real application fee, a real capture, a real tip row. It
-// exists so the ledger can be verified on a device that cannot do Tap to Pay.
+// Shows a Real/Test toggle on the tip screen. In Test the whole money path
+// runs without the NFC radio: a real PaymentIntent, a real application fee, a
+// real capture, a real tip row. It exists so the ledger can be verified on a
+// device that cannot do Tap to Pay.
 //
-// Set this to false to remove the button. That is the entire off switch, and
+// Set this to false to remove the toggle. That is the entire off switch, and
 // it is deliberately not tied to __DEV__ — the whole point is to be able to
 // test a release APK on a real phone.
 //
-// Two things stop this becoming a live-mode hole. Stripe refuses to connect a
-// simulated reader to a connection token minted from a live secret key, so the
-// path cannot reach real money even if this is left on. And the button says so
-// on its face. Neither is a reason to ship with it enabled.
+// What actually stops this becoming a live-mode hole is one thing, on the
+// server: POST /simulate_payment_intent refuses outright unless the backend's
+// Stripe key is sk_test_ (StripeController.cs, "── The gate ──"). The app
+// cannot reach real money by flipping this flag, because the endpoint behind
+// it will not answer under live keys.
+//
+// This block previously claimed the safeguard was Stripe declining to attach a
+// simulated *reader* to a live connection token. That was true when the
+// simulation drove the Terminal SDK, and stopped being true when it was
+// rewritten to charge server-side — usePayment.ts now calls
+// api.simulatePaymentIntent() and never touches Terminal at all. Recorded
+// because a safeguard someone believes in but that no longer exists is what
+// gets a flag like this shipped enabled.
+//
+// None of which is a reason to ship with it on.
 // ─────────────────────────────────────────────────────────────
 export const SIMULATED_PAYMENTS_ENABLED = true;
 
