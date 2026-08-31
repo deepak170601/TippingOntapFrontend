@@ -35,7 +35,8 @@ const TipResultScreen = (): React.JSX.Element => {
       ]),
       Animated.spring(checkScale, { toValue: 1, friction: 4, tension: 100, useNativeDriver: true }),
     ]).start();
-  }, []);
+    // useRef(...).current — stable identities, so this plays once on mount.
+  }, [scaleAnim, fadeAnim, slideAnim, checkScale]);
 
   const formatted = (amountCents / 100).toLocaleString('en-US', {
     style: 'currency', currency: 'USD',

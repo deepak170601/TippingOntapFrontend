@@ -31,7 +31,6 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [pastEvents,     setPastEvents]     = useState<Event[]>([]);
   const [totalProfit,    setTotalProfit]    = useState<number>(0);
-  const [loading,        setLoading]        = useState<boolean>(true);
   const [refreshing,     setRefreshing]     = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
@@ -55,7 +54,6 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
     } catch (err) {
       console.error('HomeScreen load error:', err);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   }, []);

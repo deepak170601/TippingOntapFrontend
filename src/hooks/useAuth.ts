@@ -1,5 +1,4 @@
 // src/hooks/useAuth.ts
-import { useCallback } from 'react';
 import { useAuthContext } from '../context/AuthContext';
 import type { AuthResponse } from '../services/api';
 

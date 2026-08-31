@@ -1,6 +1,6 @@
 // src/screens/auth/SplashScreen.tsx
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Image, StyleSheet, StatusBar, Animated } from 'react-native';
+import { View, Image, StyleSheet, StatusBar, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../navigation/AuthNavigator';
@@ -21,7 +21,10 @@ const SplashScreen = (): React.JSX.Element => {
 
     const timer = setTimeout(() => navigation.replace('Login'), 2500);
     return () => clearTimeout(timer);
-  }, []);
+    // All three are stable: the Animated.Values are useRef(...).current and
+    // navigation is a stable React Navigation object, so naming them here
+    // satisfies the rule without making the effect re-run.
+  }, [navigation, opacity, translateY]);
 
   return (
     <View style={styles.container}>

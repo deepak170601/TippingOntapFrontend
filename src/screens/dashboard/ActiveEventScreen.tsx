@@ -114,7 +114,8 @@ const ActiveEventScreen = (): React.JSX.Element => {
       ).start();
     spin(coinSpin1, 2400);
     spin(coinSpin2, 1800);
-  }, []);
+    // useRef(...).current — stable identities, so the loop starts once.
+  }, [coinSpin1, coinSpin2]);
 
   const spinInterpolate = (anim: Animated.Value) =>
     anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });

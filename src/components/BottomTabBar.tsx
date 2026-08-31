@@ -2,11 +2,11 @@
 // Persistent tab bar shown on all stack screens
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import type { RootNavigationProp } from '../navigation/AppNavigator';
-import { colours, tabBar, spacing, fontSizes } from '../theme';
+import { colours, tabBar } from '../theme';
 
 interface TabItem {
   label:    string;
