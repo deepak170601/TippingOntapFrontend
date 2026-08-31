@@ -219,6 +219,11 @@ export interface AuthResponse {
   phoneNumber:        string;
   onboardingComplete: boolean;   // ← Goal 7
   companyName?:       string;
+  // Pairs with companyName — the backend refuses one without the other. Absent
+  // from this type until now, which is why getProfile had to widen its own
+  // return with `& { ein?: string }`: the field existed on the wire from that
+  // one endpoint and nowhere else in the type system.
+  ein?:               string;
   address1?:          string;
   address2?:          string;
   city?:              string;

@@ -9,7 +9,7 @@ import WalletScreen      from '../screens/dashboard/WalletScreen';
 import CreateEventScreen from '../screens/dashboard/CreateEventScreen';
 import SettingsScreen    from '../screens/dashboard/SettingsScreen';
 import ProfileScreen     from '../screens/dashboard/ProfileScreen';
-import { tabBar, colours, fontSizes } from '../theme';
+import { tabBar, colours } from '../theme';
 
 export type MainTabParamList = {
   Home:        undefined;
@@ -55,15 +55,19 @@ const MainNavigator = (): React.JSX.Element => {
       }}
     />
     <Tab.Screen
-      name="Wallet"
-      component={WalletScreen}
+      name="Profile"
+      component={ProfileScreen}
       options={{
-        tabBarLabel: 'Wallet',
+        tabBarLabel: 'Profile',
         tabBarIcon: ({ color, size }) => (
-          <Icon name="account-balance-wallet" size={size} color={color} />
+          <Icon name="person" size={size} color={color} />
         ),
       }}
     />
+    {/* CreateEvent must stay third of five — CenterTabIcon is drawn as the
+        raised centre button and only sits centred at that index. So moving
+        Wallet to the end is a swap with Profile, not a shift of everything
+        left, which would have pushed the centre button off-centre. */}
     <Tab.Screen
       name="CreateEvent"
       component={CreateEventScreen}
@@ -83,12 +87,12 @@ const MainNavigator = (): React.JSX.Element => {
       }}
     />
     <Tab.Screen
-      name="Profile"
-      component={ProfileScreen}
+      name="Wallet"
+      component={WalletScreen}
       options={{
-        tabBarLabel: 'Profile',
+        tabBarLabel: 'Wallet',
         tabBarIcon: ({ color, size }) => (
-          <Icon name="person" size={size} color={color} />
+          <Icon name="account-balance-wallet" size={size} color={color} />
         ),
       }}
     />

@@ -163,13 +163,23 @@ const ProfileScreen = (): React.JSX.Element => {
     s.abbr.toLowerCase().includes(stateSearch.toLowerCase())
   );
 
-  const fmt = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
-  const avgTip = tipCount > 0 ? totalTips / tipCount : 0;
+  // Whole dollars. These are three small side-by-side cards and
+  // the cents are what push "$1,234.56" wide enough to shrink or wrap. The exact
+  // figure lives on the Wallet screen, which is the right place to read a
+  // balance; this row is a glance.
+  const fmtCompact = (cents: number): string =>
+    `$${Math.round(cents / 100).toLocaleString('en-US')}`;
 
+  // "Avg Tip" was dropped rather than fixed. It was arithmetically correct —
+  // all-time total over all-time count — but it answered a question nobody
+  // asks: a merchant cannot act on it, and it moves so slowly after the first
+  // week that it looks stuck. Tip count is the number that actually pairs with
+  // the money beside it, and it disambiguates the middle card, which read as
+  // "Total Tips" while showing dollars.
   const STATS = [
-    { label: 'Events',     value: String(eventCount), icon: '🎪' },
-    { label: 'Total Tips', value: fmt(totalTips),      icon: '💰' },
-    { label: 'Avg Tip',    value: fmt(avgTip),         icon: '📈' },
+    { label: 'Events', value: String(eventCount), icon: '🎪' },
+    { label: 'Earned', value: fmtCompact(totalTips), icon: '💰' },
+    { label: 'Tips',   value: String(tipCount),   icon: '🧾' },
   ];
 
   return (
@@ -202,9 +212,6 @@ const ProfileScreen = (): React.JSX.Element => {
           </View>
           <Text style={styles.name}>{user?.fullName ?? 'User'}</Text>
           <Text style={styles.email}>{user?.email ?? ''}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>⭐ Event Merchant</Text>
-          </View>
         </View>
 
         {/* ── Stats row — real data ───────────────────────── */}
@@ -212,10 +219,29 @@ const ProfileScreen = (): React.JSX.Element => {
           {STATS.map(s => (
             <View key={s.label} style={styles.statCard}>
               <Text style={styles.statIcon}>{s.icon}</Text>
-              {statsLoading
-                ? <ActivityIndicator size="small" color={colours.primary} />
-                : <Text style={styles.statValue}>{s.value}</Text>}
-              <Text style={styles.statLabel}>{s.label}</Text>
+
+              {/* Fixed-height slot. The spinner and the value are different
+                  heights, so without this the three cards jump as each one
+                  resolves, and a card still loading sits lower than its
+                  neighbours. */}
+              <View style={styles.statValueSlot}>
+                {statsLoading
+                  ? <ActivityIndicator size="small" color={colours.primary} />
+                  : (
+                    <Text
+                      style={styles.statValue}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      {s.value}
+                    </Text>
+                  )}
+              </View>
+
+              <Text style={styles.statLabel} numberOfLines={1}>
+                {s.label}
+              </Text>
             </View>
           ))}
         </View>
@@ -517,8 +543,13 @@ const styles = StyleSheet.create({
   statsRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
   statCard:  { flex: 1, backgroundColor: colours.surface, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', minHeight: 92, justifyContent: 'center', ...shadows.subtle },
   statIcon:  { fontSize: 22, marginBottom: spacing.xs },
-  statValue: { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.textPrimary },
-  statLabel: { fontSize: fontSizes.xs, color: colours.textSecondary, marginTop: 2 },
+  // Height fixed, width filled: every card reserves one identical row for its
+  // number, so the icon above and the label below land on the same baseline
+  // across all three regardless of how wide the value is or whether it has
+  // loaded yet. This is what was making the row look crooked.
+  statValueSlot: { height: 22, width: '100%', alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.textPrimary, textAlign: 'center' },
+  statLabel: { fontSize: fontSizes.xs, color: colours.textSecondary, marginTop: 2, textAlign: 'center' },
 
   // Section
   sectionRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
