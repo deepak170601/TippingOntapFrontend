@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
 import Header from '../../components/common/Header';
+import LogoutConfirmSheet from '../../components/common/LogoutConfirmSheet';
 import api from '../../services/api';
 import { US_STATES, USState } from '../../constants/usStates';
 import {
@@ -28,7 +29,7 @@ interface FormState {
 }
 
 const ProfileScreen = (): React.JSX.Element => {
-  const { user, updateUser, logout } = useAuthContext();
+  const { user, updateUser } = useAuthContext();
 
   // ── Real stats ────────────────────────────────────────────
   const [eventCount,   setEventCount]   = useState<number>(0);
@@ -73,10 +74,19 @@ const ProfileScreen = (): React.JSX.Element => {
   // ── Load real stats ───────────────────────────────────────
   const loadStats = useCallback(async (): Promise<void> => {
     try {
-      const [eventsRes, walletRes] = await Promise.all([
+      // getProfile is here for a reason that is not stats. The user object in
+      // context is whatever /auth returned at sign-in and is never refetched,
+      // so any field the backend starts returning later — ein was exactly
+      // this — stays missing until the merchant signs out and back in. Pulling
+      // the authoritative profile on open means the screen that displays these
+      // fields is also the screen that refreshes them.
+      const [eventsRes, walletRes, profileRes] = await Promise.all([
         api.getEvents(),
         api.getWallet(),
+        api.getProfile(),
       ]);
+
+      updateUser(profileRes);
 
       const allEvents =
         (eventsRes.upcoming?.length ?? 0) +
@@ -94,7 +104,9 @@ const ProfileScreen = (): React.JSX.Element => {
       setStatsLoading(false);
       setRefreshing(false);
     }
-  }, []);
+    // updateUser is a stable useCallback from AuthContext, so naming it here
+    // does not make this refetch on every render.
+  }, [updateUser]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
@@ -151,12 +163,9 @@ const ProfileScreen = (): React.JSX.Element => {
     setEditing(false);
   };
 
-  const handleLogout = (): void => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => logout() },
-    ]);
-  };
+  // Copy, busy state and failure handling all live in LogoutConfirmSheet, so
+  // this screen and Settings cannot drift apart again.
+  const [confirmLogout, setConfirmLogout] = useState<boolean>(false);
 
   const filteredStates = US_STATES.filter(s =>
     s.name.toLowerCase().includes(stateSearch.toLowerCase()) ||
@@ -441,13 +450,18 @@ const ProfileScreen = (): React.JSX.Element => {
         {!editing && (
           <TouchableOpacity
             style={styles.logoutBtn}
-            onPress={handleLogout}
+            onPress={() => setConfirmLogout(true)}
             activeOpacity={0.85}
           >
             <Text style={styles.logoutBtnText}>Sign Out</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <LogoutConfirmSheet
+        visible={confirmLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
 
       {/* ── State picker modal ──────────────────────────── */}
       <Modal

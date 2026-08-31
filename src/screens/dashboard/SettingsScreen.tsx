@@ -3,7 +3,7 @@ import React, { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator, ScrollView, Switch, Linking,
+  Alert, ScrollView, Switch, Linking,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
 import {
@@ -12,14 +12,14 @@ import {
   cancelAllEventReminders, scheduledReminderCount,
 } from '../../services/notifications';
 import Header from '../../components/common/Header';
+import LogoutConfirmSheet from '../../components/common/LogoutConfirmSheet';
 import {
   colours, fontSizes, fontWeights,
   spacing, radius, shadows,
 } from '../../theme';
 
 const SettingsScreen = (): React.JSX.Element => {
-  const { logout, user }             = useAuthContext();
-  const [loggingOut, setLoggingOut]  = useState<boolean>(false);
+  const { user }                     = useAuthContext();
 
   // ── Event reminders ───────────────────────────────────────
   // Two separate things decide whether a reminder ever arrives: this in-app
@@ -79,24 +79,9 @@ const SettingsScreen = (): React.JSX.Element => {
     }
   };
 
-  const handleLogout = (): void => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: async () => {
-            setLoggingOut(true);
-            try { await logout(); }
-            catch { setLoggingOut(false); }
-          },
-        },
-      ]
-    );
-  };
+  // Copy, busy state and failure handling now live in LogoutConfirmSheet,
+  // shared with ProfileScreen — this screen only decides when to show it.
+  const [confirmLogout, setConfirmLogout] = useState<boolean>(false);
 
   const MENU_ITEMS = [
     { icon: '🔐', label: 'Security',          sub: 'Password & 2FA' },
@@ -172,21 +157,25 @@ const SettingsScreen = (): React.JSX.Element => {
           ))}
         </View>
 
-        {/* Logout button */}
+        {/* Sign out — same wording as ProfileScreen, since a merchant meeting
+            "Log Out" here and "Sign Out" there has to wonder whether they do
+            different things. The spinner moved into the sheet with the rest of
+            the busy state. */}
         <TouchableOpacity
-          style={[styles.logoutBtn, loggingOut && styles.logoutDisabled]}
-          onPress={handleLogout}
-          disabled={loggingOut}
+          style={styles.logoutBtn}
+          onPress={() => setConfirmLogout(true)}
           activeOpacity={0.8}
         >
-          {loggingOut
-            ? <ActivityIndicator color={colours.white} />
-            : <Text style={styles.logoutText}>🚪  Log Out</Text>
-          }
+          <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
         <Text style={styles.version}>Tipping On The Go  v1.0.0</Text>
       </ScrollView>
+
+      <LogoutConfirmSheet
+        visible={confirmLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </View>
   );
 };
