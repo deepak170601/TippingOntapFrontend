@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
   NativeStackNavigationProp,
@@ -9,10 +10,10 @@ import {
 import { useAuthContext }            from '../context/AuthContext';
 import AuthNavigator                 from './AuthNavigator';
 import MainNavigator                 from './MainNavigator';
+import type { MainTabParamList }     from './MainNavigator';
 import ActiveEventScreen             from '../screens/dashboard/ActiveEventScreen';
 import TipCollectionScreen           from '../screens/dashboard/TipCollectionScreen';
 import ActiveEventsScreen            from '../screens/dashboard/ActiveEventsScreen';
-import UpcomingEventsScreen          from '../screens/dashboard/UpcomingEventsScreen';
 import AllEventsScreen               from '../screens/dashboard/AllEventsScreen';
 import TipResultScreen               from '../screens/payment/TipResultScreen';
 import StripeTerminalInit            from '../components/StripeTerminalInit';
@@ -33,7 +34,11 @@ type OnboardingRootParamList = {
 };
 
 export type RootStackParamList = {
-  Main:                undefined;
+  // Typed as the tab param list rather than undefined so callers can jump
+  // straight to a tab — navigate('Main', { screen: 'Upcoming' }). Upcoming
+  // used to be its own stack screen; now that it is a tab, this is the only
+  // way to reach it from a screen sitting above the tab navigator.
+  Main:                NavigatorScreenParams<MainTabParamList> | undefined;
   // TipCollection is where a running event is opened from. ActiveEvent stays
   // registered — it is the merchant-facing view of the same event, with the
   // running totals and the earnings breakdown, and nothing about it changed.
@@ -41,7 +46,6 @@ export type RootStackParamList = {
   ActiveEvent:         { event: Event };
   ActiveEvents:        undefined;
   PastEvents:          undefined;
-  UpcomingEvents:      undefined;
   AllEvents:           undefined;
   UpcomingEventDetail: { event: Event };
   TipResult:           { success: boolean; amountCents: number; eventName?: string };
@@ -75,19 +79,6 @@ const OnboardingNavigator = (): React.JSX.Element => (
 
 // ── Authenticated — full app ──────────────────────────────────
 const AuthenticatedNavigator = (): React.JSX.Element => {
-  // Notification permission is asked here, once, when a signed-in merchant
-  // reaches the app — not mid-task.
-  //
-  // It used to be requested straight after an event was created, which put
-  // Android's system permission dialog on screen a frame before the app's own
-  // "event created" dialog. Two dialog windows in the same beat, and the
-  // second one's buttons stopped responding.
-  //
-  // requestPermission only shows a dialog the first time; every later call
-  // resolves from the stored answer, so running this on each launch is free.
-  // It is not awaited and cannot throw — nothing here depends on the answer.
-  useEffect(() => { requestNotificationPermission(); }, []);
-
   return (
   <StripeTerminalInit>
     <MainRoot.Navigator screenOptions={{ headerShown: false }}>
@@ -116,11 +107,6 @@ const AuthenticatedNavigator = (): React.JSX.Element => {
         options={{ animation: 'slide_from_right' }}
       />
       <MainRoot.Screen
-        name="UpcomingEvents"
-        component={UpcomingEventsScreen}
-        options={{ animation: 'slide_from_right' }}
-      />
-      <MainRoot.Screen
         name="AllEvents"
         component={AllEventsScreen}
         options={{ animation: 'slide_from_right' }}
@@ -143,6 +129,24 @@ const AuthenticatedNavigator = (): React.JSX.Element => {
 // ── Root navigator ────────────────────────────────────────────
 const AppNavigator = (): React.JSX.Element => {
   const { isAuthenticated, isLoading, canCollectTips } = useAuthContext();
+
+  // Notification permission is asked once, as soon as a signed-in merchant
+  // reaches the app — not mid-task, and no longer only after Stripe clears
+  // them. It used to live in AuthenticatedNavigator, which never mounts for a
+  // merchant stuck on the onboarding gate, so the people most likely to need
+  // a reminder that setup is unfinished were the ones never asked.
+  //
+  // It used to be requested straight after an event was created, which put
+  // Android's system permission dialog on screen a frame before the app's own
+  // "event created" dialog. Two dialog windows in the same beat, and the
+  // second one's buttons stopped responding.
+  //
+  // requestPermission only shows a dialog the first time; every later call
+  // resolves from the stored answer, so running this on each launch is free.
+  // Not awaited and cannot throw — nothing here depends on the answer.
+  useEffect(() => {
+    if (isAuthenticated) { requestNotificationPermission(); }
+  }, [isAuthenticated]);
 
   // Gated on canCollectTips, NOT onboardingComplete.
   //

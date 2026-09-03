@@ -143,7 +143,7 @@ const CreateEventScreen = (): React.JSX.Element => {
   const leaveTo = (where: 'upcoming' | 'home'): void => {
     setCreatedName(null);
     if (where === 'upcoming') {
-      navigation.navigate('UpcomingEvents');
+      navigation.navigate('Main', { screen: 'Upcoming' });
     } else {
       tabNavigation.navigate('Home');
     }

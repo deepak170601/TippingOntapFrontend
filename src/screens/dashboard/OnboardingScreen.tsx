@@ -12,12 +12,14 @@ import {
 import useTopInset from '../../hooks/useTopInset';
 import ConnectRequirementsList from '../../components/ConnectRequirementsList';
 import StripeOnboardingModal from '../../components/StripeOnboardingModal';
+import ContactSupportSheet from '../../components/common/ContactSupportSheet';
 
 const OnboardingScreen = (): React.JSX.Element => {
   const { refreshConnectStatus, connectStatus } = useAuthContext();
   const topInset = useTopInset();
 
   const [setupOpen,      setSetupOpen]      = useState<boolean>(false);
+  const [contactOpen,    setContactOpen]    = useState<boolean>(false);
   const [checking,       setChecking]       = useState<boolean>(false);
   const [error,          setError]          = useState<string | null>(null);
   const [statusMessage,  setStatusMessage]  = useState<string | null>(null);
@@ -148,6 +150,21 @@ const OnboardingScreen = (): React.JSX.Element => {
 
       </View>
 
+      {/* ── Having trouble ──────────────────────────────── */}
+      {/* This screen is a dead end by design — no back button, no way to skip.
+          A merchant Stripe will not clear has nowhere else to go, so the one
+          route to a human belongs here rather than behind a support page they
+          cannot reach. */}
+      <TouchableOpacity
+        style={styles.troubleBtn}
+        onPress={() => setContactOpen(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.troubleText}>
+          Having trouble with signup?  <Text style={styles.troubleLink}>Contact us</Text>
+        </Text>
+      </TouchableOpacity>
+
       {/* ── Footer ──────────────────────────────────────── */}
       <Text style={styles.footer}>🔒 Secured by Stripe</Text>
 
@@ -156,6 +173,12 @@ const OnboardingScreen = (): React.JSX.Element => {
       <StripeOnboardingModal
         visible={setupOpen}
         onClose={() => setSetupOpen(false)}
+      />
+
+      <ContactSupportSheet
+        visible={contactOpen}
+        onClose={() => setContactOpen(false)}
+        context="Stripe onboarding gate"
       />
     </View>
   );
@@ -279,6 +302,21 @@ const styles = StyleSheet.create({
     marginTop:       spacing.sm,
   },
   statusText: { color: colours.success, fontSize: fontSizes.sm, fontWeight: fontWeights.semiBold },
+
+  troubleBtn: {
+    alignItems:    'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  troubleText: {
+    fontSize:  fontSizes.sm,
+    color:     colours.textSecondary,
+    textAlign: 'center',
+  },
+  troubleLink: {
+    color:      colours.primary,
+    fontWeight: fontWeights.bold,
+  },
 
   footer: {
     textAlign:     'center',

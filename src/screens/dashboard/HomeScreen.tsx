@@ -162,7 +162,7 @@ const HomeScreen = ({ navigation }: Props): React.JSX.Element => {
               </View>
               <TouchableOpacity
                 style={styles.viewAllBtn}
-                onPress={() => rootNavigation.navigate('UpcomingEvents')}
+                onPress={() => rootNavigation.navigate('Main', { screen: 'Upcoming' })}
               >
                 <Text style={styles.viewAllText}>View All</Text>
               </TouchableOpacity>

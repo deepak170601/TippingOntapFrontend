@@ -4,9 +4,15 @@ import {
   View, Text, StyleSheet, ScrollView,
   TextInput, TouchableOpacity, ActivityIndicator,
   Alert, Modal, FlatList, RefreshControl,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Switch, Linking,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthContext } from '../../context/AuthContext';
+import {
+  areRemindersEnabled, setRemindersEnabled,
+  hasNotificationPermission, requestNotificationPermission,
+  cancelAllEventReminders, scheduledReminderCount,
+} from '../../services/notifications';
 import Header from '../../components/common/Header';
 import LogoutConfirmSheet from '../../components/common/LogoutConfirmSheet';
 import api from '../../services/api';
@@ -34,7 +40,6 @@ const ProfileScreen = (): React.JSX.Element => {
   // ── Real stats ────────────────────────────────────────────
   const [eventCount,   setEventCount]   = useState<number>(0);
   const [totalTips,    setTotalTips]    = useState<number>(0);
-  const [tipCount,     setTipCount]     = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState<boolean>(true);
   const [refreshing,   setRefreshing]   = useState<boolean>(false);
 
@@ -93,11 +98,8 @@ const ProfileScreen = (): React.JSX.Element => {
         (eventsRes.active?.length   ?? 0) +
         (eventsRes.past?.length     ?? 0);
 
-      const tips = (walletRes.days ?? []).reduce((sum, d) => sum + d.tipCount, 0);
-
       setEventCount(allEvents);
       setTotalTips(walletRes.totalAllTime ?? 0);
-      setTipCount(tips);
     } catch (err) {
       console.error('Profile stats error:', err);
     } finally {
@@ -163,8 +165,66 @@ const ProfileScreen = (): React.JSX.Element => {
     setEditing(false);
   };
 
+  // ── Event reminders ─────────────────────────────────
+  // Two separate things decide whether a reminder ever arrives: this in-app
+  // preference, and the OS permission. The switch shows the AND of them,
+  // because a switch that reads "on" while Android is dropping every
+  // notification is a lie the merchant only discovers by missing an event.
+  const [remindersOn, setRemindersOn] = useState<boolean>(false);
+
+  // How many are actually armed right now. Without this the feature is
+  // invisible until it either fires or fails to.
+  const [armed, setArmed] = useState<number>(0);
+
+  const refreshReminderState = useCallback(async (): Promise<void> => {
+    const [pref, granted, count] = await Promise.all([
+      areRemindersEnabled(),
+      hasNotificationPermission(),
+      scheduledReminderCount(),
+    ]);
+    setRemindersOn(pref && granted);
+    setArmed(count);
+  }, []);
+
+  // On focus, not on mount. Profile is a tab and stays mounted, so a
+  // mount-only read would go stale the moment an event is created or ends.
+  useFocusEffect(useCallback(() => { refreshReminderState(); }, [refreshReminderState]));
+
+  const handleToggleReminders = async (next: boolean): Promise<void> => {
+    if (!next) {
+      setRemindersOn(false);
+      await setRemindersEnabled(false);
+      await cancelAllEventReminders();
+      setArmed(0);
+      return;
+    }
+
+    // Turning it on has to clear the OS permission too. requestPermission only
+    // shows a dialog the first time; after a denial Android returns silently,
+    // so from then on the only route is system settings and we have to say so
+    // rather than leave the switch flicking back with no explanation.
+    await setRemindersEnabled(true);
+    const granted = (await hasNotificationPermission())
+      || (await requestNotificationPermission());
+
+    setRemindersOn(granted);
+    if (granted) { await refreshReminderState(); }
+
+    if (!granted) {
+      Alert.alert(
+        'Notifications are turned off',
+        'Android is blocking notifications for this app, so event reminders '
+        + 'cannot be delivered. You can turn them back on in system settings.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => { Linking.openSettings(); } },
+        ],
+      );
+    }
+  };
+
   // Copy, busy state and failure handling all live in LogoutConfirmSheet, so
-  // this screen and Settings cannot drift apart again.
+  // this screen and the sign-out elsewhere cannot drift apart again.
   const [confirmLogout, setConfirmLogout] = useState<boolean>(false);
 
   const filteredStates = US_STATES.filter(s =>
@@ -179,16 +239,14 @@ const ProfileScreen = (): React.JSX.Element => {
   const fmtCompact = (cents: number): string =>
     `$${Math.round(cents / 100).toLocaleString('en-US')}`;
 
-  // "Avg Tip" was dropped rather than fixed. It was arithmetically correct —
-  // all-time total over all-time count — but it answered a question nobody
-  // asks: a merchant cannot act on it, and it moves so slowly after the first
-  // week that it looks stuck. Tip count is the number that actually pairs with
-  // the money beside it, and it disambiguates the middle card, which read as
-  // "Total Tips" while showing dollars.
+  // Two cards, not three. The tip-count card went the same way "Avg Tip" did
+  // before it: a number that is true, cheap to show, and not one a merchant
+  // does anything with. What is left is the pair that answers "how is the
+  // business going" — how much work, and how much money. Two cards also sit
+  // wider, so the dollar figure stops competing for space.
   const STATS = [
     { label: 'Events', value: String(eventCount), icon: '🎪' },
     { label: 'Earned', value: fmtCompact(totalTips), icon: '💰' },
-    { label: 'Tips',   value: String(tipCount),   icon: '🧾' },
   ];
 
   return (
@@ -292,6 +350,40 @@ const ProfileScreen = (): React.JSX.Element => {
               }
             />
           </View>
+        )}
+
+        {/* ── Event reminders ───────────────────────── */}
+        {/* Inherited from the deleted Settings screen. It was the only control
+            there that did anything — the rest was placeholder rows and a
+            second sign-out button — so it moved rather than went. Deleting a
+            screen should not quietly delete the merchant's only say in
+            whether their phone reminds them about an event. */}
+        {!editing && (
+          <>
+            <Text style={styles.sectionLabel}>PREFERENCES</Text>
+            <View style={styles.prefCard}>
+              <View style={styles.prefRow}>
+                <Text style={styles.prefIcon}>🔔</Text>
+                <View style={styles.prefText}>
+                  <Text style={styles.prefLabel}>Event Reminders</Text>
+                  <Text style={styles.prefSub}>
+                    A day before and 30 minutes before each event
+                  </Text>
+                  <Text style={styles.prefSub}>
+                    {remindersOn
+                      ? `${armed} scheduled right now`
+                      : 'Off — nothing is scheduled'}
+                  </Text>
+                </View>
+                <Switch
+                  value={remindersOn}
+                  onValueChange={handleToggleReminders}
+                  trackColor={{ false: colours.border, true: colours.primaryLight }}
+                  thumbColor={remindersOn ? colours.primary : colours.surface}
+                />
+              </View>
+            </View>
+          </>
         )}
 
         {/* ══ EDIT MODE ═══════════════════════════════════ */}
@@ -555,6 +647,14 @@ const styles = StyleSheet.create({
 
   // Stats
   statsRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+
+  // Preferences card, inherited with the reminders switch from Settings
+  prefCard:  { marginTop: spacing.sm, backgroundColor: colours.surface, borderRadius: radius.lg, padding: spacing.base, marginBottom: spacing.xl, ...shadows.card },
+  prefRow:   { flexDirection: 'row', alignItems: 'center' },
+  prefIcon:  { fontSize: 22, marginRight: spacing.md },
+  prefText:  { flex: 1 },
+  prefLabel: { fontSize: fontSizes.base, fontWeight: fontWeights.bold, color: colours.textPrimary },
+  prefSub:   { fontSize: fontSizes.xs, color: colours.textSecondary, marginTop: 2 },
   statCard:  { flex: 1, backgroundColor: colours.surface, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', minHeight: 92, justifyContent: 'center', ...shadows.subtle },
   statIcon:  { fontSize: 22, marginBottom: spacing.xs },
   // Height fixed, width filled: every card reserves one identical row for its

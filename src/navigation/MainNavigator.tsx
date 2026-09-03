@@ -7,16 +7,16 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import HomeScreen        from '../screens/dashboard/HomeScreen';
 import WalletScreen      from '../screens/dashboard/WalletScreen';
 import CreateEventScreen from '../screens/dashboard/CreateEventScreen';
-import SettingsScreen    from '../screens/dashboard/SettingsScreen';
+import UpcomingEventsScreen from '../screens/dashboard/UpcomingEventsScreen';
 import ProfileScreen     from '../screens/dashboard/ProfileScreen';
 import { tabBar, colours } from '../theme';
 
 export type MainTabParamList = {
   Home:        undefined;
-  Wallet:      undefined;
+  Upcoming:    undefined;
   CreateEvent: undefined;
-  Settings:    undefined;
   Profile:     undefined;
+  Wallet:      undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -54,20 +54,22 @@ const MainNavigator = (): React.JSX.Element => {
         ),
       }}
     />
+    {/* Upcoming is the same screen the stack used to own. It is a tab now
+        because "what am I working next?" is a question merchants ask on
+        opening the app, not one worth a drill-down. */}
     <Tab.Screen
-      name="Profile"
-      component={ProfileScreen}
+      name="Upcoming"
+      component={UpcomingEventsScreen}
       options={{
-        tabBarLabel: 'Profile',
+        tabBarLabel: 'Upcoming',
         tabBarIcon: ({ color, size }) => (
-          <Icon name="person" size={size} color={color} />
+          <Icon name="event" size={size} color={color} />
         ),
       }}
     />
     {/* CreateEvent must stay third of five — CenterTabIcon is drawn as the
-        raised centre button and only sits centred at that index. So moving
-        Wallet to the end is a swap with Profile, not a shift of everything
-        left, which would have pushed the centre button off-centre. */}
+        raised centre button and only sits centred at that index. Every
+        reordering around it has to preserve that. */}
     <Tab.Screen
       name="CreateEvent"
       component={CreateEventScreen}
@@ -77,12 +79,12 @@ const MainNavigator = (): React.JSX.Element => {
       }}
     />
     <Tab.Screen
-      name="Settings"
-      component={SettingsScreen}
+      name="Profile"
+      component={ProfileScreen}
       options={{
-        tabBarLabel: 'Settings',
+        tabBarLabel: 'Profile',
         tabBarIcon: ({ color, size }) => (
-          <Icon name="settings" size={size} color={color} />
+          <Icon name="person" size={size} color={color} />
         ),
       }}
     />

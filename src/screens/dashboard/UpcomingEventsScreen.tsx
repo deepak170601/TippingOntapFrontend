@@ -14,7 +14,6 @@ import {
   spacing, radius, shadows,
 } from '../../theme';
 import useTopInset from '../../hooks/useTopInset';
-import BottomTabBar from '../../components/BottomTabBar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -124,7 +123,9 @@ const UpcomingEventsScreen = (): React.JSX.Element => {
           />
         }
       />
-      <BottomTabBar />
+      {/* No BottomTabBar here any more. This screen is a tab now, so the tab
+          navigator draws the bar; rendering our own would stack a second one
+          on top of it. */}
     </View>
   );
 };

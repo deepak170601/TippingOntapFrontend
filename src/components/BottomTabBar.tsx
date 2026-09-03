@@ -11,16 +11,20 @@ import { colours, tabBar } from '../theme';
 interface TabItem {
   label:    string;
   icon:     string;
-  screen:   'Home' | 'Wallet' | 'CreateEvent' | 'Settings' | 'Profile';
+  screen:   'Home' | 'Upcoming' | 'CreateEvent' | 'Profile' | 'Wallet';
   isCenter: boolean;
 }
 
+// Order and membership must mirror MainNavigator's Tab.Screens exactly. This
+// bar is drawn on stack screens that sit above the tab navigator, so the two
+// are the same control as far as a merchant is concerned — if they disagree,
+// the bar visibly rearranges itself when you open an event.
 const TABS: TabItem[] = [
   { label: 'Home',         icon: 'home',                       screen: 'Home',        isCenter: false },
-  { label: 'Wallet',       icon: 'account-balance-wallet',     screen: 'Wallet',      isCenter: false },
+  { label: 'Upcoming',     icon: 'event',                      screen: 'Upcoming',    isCenter: false },
   { label: 'Create Event', icon: 'add',                        screen: 'CreateEvent', isCenter: true  },
-  { label: 'Settings',     icon: 'settings',                   screen: 'Settings',    isCenter: false },
   { label: 'Profile',      icon: 'person',                     screen: 'Profile',     isCenter: false },
+  { label: 'Wallet',       icon: 'account-balance-wallet',     screen: 'Wallet',      isCenter: false },
 ];
 
 const BottomTabBar = (): React.JSX.Element => {
