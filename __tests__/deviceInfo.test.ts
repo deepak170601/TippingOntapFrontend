@@ -28,6 +28,13 @@ describe('getDeviceSummary', () => {
     expect(d.model).toBe('SM-G991B');
   });
 
+  it('reports the Android version a person recognises, and the API level', () => {
+    // "Android 14" is what the merchant will say; API 34 is what decides
+    // whether Tap to Pay is even eligible on the handset.
+    withConstants({ Brand: 'samsung', Model: 'SM-G991B', Release: '14', Version: 34 });
+    expect(getDeviceSummary().os).toBe('Android 14 (API 34)');
+  });
+
   it('prefers Brand over Manufacturer where they differ', () => {
     // A Redmi Note reports Manufacturer "Xiaomi" but Brand "Redmi". Redmi is
     // what is printed on the handset and what the merchant will say.
@@ -49,8 +56,10 @@ describe('getDeviceSummary', () => {
     expect(d.model).toBe('Unknown');
   });
 
-  it('treats blank and non-string values as Unknown', () => {
-    withConstants({ Manufacturer: '   ', Model: 42 });
+  it('treats blank and non-primitive values as Unknown', () => {
+    // Numbers are accepted on purpose — Version (the API level) arrives as
+    // one. Blanks and anything structured do not.
+    withConstants({ Brand: '   ', Manufacturer: '', Model: { junk: true } });
     const d = getDeviceSummary();
     expect(d.brand).toBe('Unknown');
     expect(d.model).toBe('Unknown');

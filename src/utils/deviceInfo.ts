@@ -35,7 +35,10 @@ const read = (key: string): string => {
   try {
     const constants = Platform.constants as Record<string, unknown> | undefined;
     const value = constants?.[key];
-    return typeof value === 'string' && value.trim() !== '' ? value.trim() : UNKNOWN;
+    if (typeof value === 'string' && value.trim() !== '') { return value.trim(); }
+    // Version (the API level) arrives as a number; everything else is a string.
+    if (typeof value === 'number') { return String(value); }
+    return UNKNOWN;
   } catch {
     return UNKNOWN;
   }
@@ -49,7 +52,10 @@ const read = (key: string): string => {
 // already stuck on.
 const osVersion = (): string => {
   try {
-    return String(Platform.Version);
+    const v = Platform.Version;
+    // String(undefined) is "undefined", which reads as a bug in a support
+    // message rather than as missing data. Only real values pass.
+    return typeof v === 'number' || typeof v === 'string' ? String(v) : UNKNOWN;
   } catch {
     return UNKNOWN;
   }
@@ -65,7 +71,11 @@ export const getDeviceSummary = (): DeviceSummary => {
       // Brand is occasionally blank on white-label hardware.
       brand: read('Brand') !== UNKNOWN ? read('Brand') : read('Manufacturer'),
       model: read('Model'),
-      os:    `Android ${osVersion()}`,
+      // Release is "14"; Platform.Version is the API level, 34. Support needs
+      // both — a merchant says "Android 14", but Tap to Pay eligibility is
+      // decided by the API level, and that is the first question when a reader
+      // will not start.
+      os:    `Android ${read('Release')} (API ${read('Version')})`,
     };
   }
 
