@@ -14,11 +14,11 @@
 // app they are trying to join.
 import React, { useState } from 'react';
 import {
-  View, Text, Modal, TouchableOpacity, StyleSheet, ActivityIndicator,
+  View, Text, Modal, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
 import { requestSupport, SUPPORT_IS_MOCKED } from '../../services/support';
-import type { SupportChannel } from '../../services/support';
+import type { SupportChannel, SupportRequest } from '../../services/support';
 import {
   colours, fontSizes, fontWeights, spacing, radius, shadows,
 } from '../../theme';
@@ -32,6 +32,13 @@ type Props = {
 
 type Phase = 'choosing' | 'sending' | 'sent' | 'failed';
 
+const PayloadRow = ({ label, value }: { label: string; value: string }) => (
+  <View style={styles.payloadRow}>
+    <Text style={styles.payloadLabel}>{label}</Text>
+    <Text style={styles.payloadValue} selectable>{value}</Text>
+  </View>
+);
+
 const ContactSupportSheet = ({
   visible, onClose, context,
 }: Props): React.JSX.Element => {
@@ -39,11 +46,17 @@ const ContactSupportSheet = ({
   const [phase, setPhase] = useState<Phase>('choosing');
   const [chosen, setChosen] = useState<SupportChannel | null>(null);
 
+  // The exact payload that went to support, kept so it can be shown. While the
+  // transport is mocked this is the only way to see what support will actually
+  // receive; it is also the thing to read back over the phone if a request
+  // seems to have gone missing.
+  const [sent, setSent] = useState<SupportRequest | null>(null);
+
   const handleChoose = async (channel: SupportChannel): Promise<void> => {
     setChosen(channel);
     setPhase('sending');
     try {
-      await requestSupport(channel, user, context);
+      setSent(await requestSupport(channel, user, context));
       setPhase('sent');
     } catch {
       // Never report success on a failure — a merchant who believes help is
@@ -58,6 +71,7 @@ const ContactSupportSheet = ({
     if (phase === 'sending') { return; }
     setPhase('choosing');
     setChosen(null);
+    setSent(null);
     onClose();
   };
 
@@ -69,7 +83,14 @@ const ContactSupportSheet = ({
       onRequestClose={handleClose}
     >
       <View style={styles.scrim}>
-        <View style={styles.card}>
+        {/* Scrolls: with the payload shown, the card can outgrow a small
+            screen, and the Close button must never be the thing off the
+            bottom edge. */}
+        <ScrollView
+          style={styles.cardScroll}
+          contentContainerStyle={styles.card}
+          showsVerticalScrollIndicator={false}
+        >
 
           {phase === 'choosing' && (
             <>
@@ -135,6 +156,24 @@ const ContactSupportSheet = ({
                   Test build — no message was actually sent yet.
                 </Text>
               )}
+
+              {/* The payload itself. Shown because it is the only way to see
+                  what support receives while the transport is mocked, and it
+                  stays useful afterwards as something a merchant can read back
+                  if a request appears to have gone missing. Selectable so it
+                  can be copied out of a test build. */}
+              {sent !== null && (
+                <View style={styles.payload}>
+                  <Text style={styles.payloadTitle}>What we're sending</Text>
+                  <PayloadRow label="Contact by" value={sent.channel} />
+                  <PayloadRow label="Name"       value={sent.name} />
+                  <PayloadRow label="Email"      value={sent.email} />
+                  <PayloadRow label="Phone"      value={sent.phoneNumber} />
+                  <PayloadRow label="Device"     value={sent.device} />
+                  <PayloadRow label="Screen"     value={sent.context} />
+                  <PayloadRow label="Sent"       value={sent.sentAt} />
+                </View>
+              )}
             </>
           )}
 
@@ -167,7 +206,7 @@ const ContactSupportSheet = ({
             </Text>
           </TouchableOpacity>
 
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -180,6 +219,11 @@ const styles = StyleSheet.create({
     alignItems:        'center',
     justifyContent:    'center',
     paddingHorizontal: spacing.xl,
+  },
+  cardScroll: {
+    width:     '100%',
+    flexGrow:  0,
+    maxHeight: '85%',
   },
   card: {
     width:           '100%',
@@ -255,6 +299,34 @@ const styles = StyleSheet.create({
     fontSize:   fontSizes.base,
     fontWeight: fontWeights.bold,
     color:      colours.white,
+  },
+
+  payload: {
+    backgroundColor:   colours.background,
+    borderRadius:      radius.md,
+    borderWidth:       1,
+    borderColor:       colours.borderBlue,
+    paddingVertical:   spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom:      spacing.md,
+  },
+  payloadTitle: {
+    fontSize:     fontSizes.xs,
+    fontWeight:   fontWeights.bold,
+    color:        colours.textSecondary,
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
+  },
+  payloadRow: { flexDirection: 'row', marginBottom: 3 },
+  payloadLabel: {
+    width:    82,
+    fontSize: fontSizes.xs,
+    color:    colours.textSecondary,
+  },
+  payloadValue: {
+    flex:     1,
+    fontSize: fontSizes.xs,
+    color:    colours.textPrimary,
   },
 
   cancel: {

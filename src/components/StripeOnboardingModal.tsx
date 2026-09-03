@@ -216,18 +216,28 @@ const StripeOnboardingModal = ({ visible, onClose }: Props): React.JSX.Element |
 
   // ConnectAccountOnboarding presents itself full-screen with its own navigation
   // bar, so it needs neither a navigator route nor a Modal wrapper of ours.
+  // Wrapped in a flex:1 View, NOT a ScrollView. ConnectAccountOnboarding is
+  // backed by a web view that scrolls its own content, and nesting that inside
+  // a ScrollView is what breaks the scrolling rather than what enables it —
+  // the outer view cannot know the inner content's height, so the form ends up
+  // clipped and unscrollable. What it does need is a parent with a definite
+  // height to fill, which is what this provides.
   return (
     <ConnectComponentsProvider connectInstance={instance}>
-      <ConnectAccountOnboarding
-        title="Set up payouts"
-        onExit={handleExit}
-        onLoadError={handleLoadError}
-      />
+      <View style={styles.fullBleed}>
+        <ConnectAccountOnboarding
+          title="Set up payouts"
+          onExit={handleExit}
+          onLoadError={handleLoadError}
+        />
+      </View>
     </ConnectComponentsProvider>
   );
 };
 
 const styles = StyleSheet.create({
+  fullBleed: { flex: 1, backgroundColor: colours.surface },
+
   scrim: {
     flex:              1,
     backgroundColor:   colours.overlay,
