@@ -58,7 +58,12 @@ const osVersion = (): string => {
 export const getDeviceSummary = (): DeviceSummary => {
   if (Platform.OS === 'android') {
     return {
-      brand: read('Manufacturer'),
+      // Brand before Manufacturer: they differ on exactly the devices where
+      // it matters — a Redmi Note reports Manufacturer "Xiaomi" but Brand
+      // "Redmi", and Redmi is what the merchant will say on the phone and
+      // what is printed on the handset. Manufacturer is the fallback because
+      // Brand is occasionally blank on white-label hardware.
+      brand: read('Brand') !== UNKNOWN ? read('Brand') : read('Manufacturer'),
       model: read('Model'),
       os:    `Android ${osVersion()}`,
     };

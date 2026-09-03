@@ -22,10 +22,22 @@ describe('getDeviceSummary', () => {
   };
 
   it('reads brand and model from Platform.constants on Android', () => {
-    withConstants({ Manufacturer: 'samsung', Model: 'SM-G991B' });
+    withConstants({ Brand: 'samsung', Manufacturer: 'samsung', Model: 'SM-G991B' });
     const d = getDeviceSummary();
     expect(d.brand).toBe('samsung');
     expect(d.model).toBe('SM-G991B');
+  });
+
+  it('prefers Brand over Manufacturer where they differ', () => {
+    // A Redmi Note reports Manufacturer "Xiaomi" but Brand "Redmi". Redmi is
+    // what is printed on the handset and what the merchant will say.
+    withConstants({ Brand: 'Redmi', Manufacturer: 'Xiaomi', Model: '22111317I' });
+    expect(getDeviceSummary().brand).toBe('Redmi');
+  });
+
+  it('falls back to Manufacturer when Brand is blank', () => {
+    withConstants({ Brand: '', Manufacturer: 'Zebra', Model: 'TC21' });
+    expect(getDeviceSummary().brand).toBe('Zebra');
   });
 
   it('falls back to Unknown rather than throwing when a key is missing', () => {
