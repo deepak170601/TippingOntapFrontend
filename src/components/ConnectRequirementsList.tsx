@@ -23,6 +23,9 @@ interface Props {
   status: ConnectStatus | null;
 }
 
+/** Enough to convey the shape of the work without becoming a document. */
+const MAX_VISIBLE = 3;
+
 const ConnectRequirementsList = ({ status }: Props): React.JSX.Element | null => {
   if (!status) { return null; }
 
@@ -39,6 +42,17 @@ const ConnectRequirementsList = ({ status }: Props): React.JSX.Element | null =>
   const currentDeadline   = status.currentDeadline   ?? null;
 
   const hasWork = currentlyDue.length > 0 || requirementErrors.length > 0;
+
+  // A fresh Express account reports twelve outstanding requirements, and
+  // rendering twelve bullets turned this card into a wall of text that pushed
+  // the Complete Setup button off the screen — on the one screen whose entire
+  // job is to get the merchant to press that button.
+  //
+  // The list was never the instruction. Every one of these is answered on
+  // Stripe's form, which the button opens; the card exists to say "here is
+  // roughly what you are in for", and a few concrete examples plus a count does
+  // that better than an exhaustive dump nobody reads. Rejections are never
+  // truncated — those are the ones a merchant has to act on specifically.
 
   // Everything submitted, Stripe still checking. Saying so is the point: it is
   // the one case where "do nothing" is the correct instruction, and the merchant
@@ -65,8 +79,15 @@ const ConnectRequirementsList = ({ status }: Props): React.JSX.Element | null =>
 
   return (
     <View style={styles.card}>
+      {/* "Action needed now" on a brand-new account is alarming and wrong —
+          past_due on an account that has never submitted anything only means
+          the form has not been filled in yet, not that the merchant has missed
+          something. The urgent wording is kept for accounts that genuinely
+          lapsed, which is where it belongs. */}
       <Text style={styles.title}>
-        {hasPastDue ? 'Action needed now' : 'Stripe still needs'}
+        {hasPastDue && requirementErrors.length > 0
+          ? 'Action needed now'
+          : 'To finish setting up, Stripe needs'}
       </Text>
 
       {/* Rejections first — a merchant re-uploading the same expired document
@@ -78,12 +99,18 @@ const ConnectRequirementsList = ({ status }: Props): React.JSX.Element | null =>
         </View>
       ))}
 
-      {currentlyDue.map(req => (
+      {currentlyDue.slice(0, MAX_VISIBLE).map(req => (
         <View key={req.code} style={styles.row}>
           <Text style={styles.bullet}>•</Text>
-          <Text style={styles.itemText}>{req.label}</Text>
+          <Text style={styles.itemText} numberOfLines={2}>{req.label}</Text>
         </View>
       ))}
+
+      {currentlyDue.length > MAX_VISIBLE && (
+        <Text style={styles.more}>
+          + {currentlyDue.length - MAX_VISIBLE} more, all answered on the next screen
+        </Text>
+      )}
 
       {deadline !== null && (
         <Text style={styles.deadline}>
@@ -138,6 +165,12 @@ const styles = StyleSheet.create({
     fontSize:   fontSizes.sm,
     color:      colours.error,
     lineHeight: 20,
+  },
+  more: {
+    fontSize:   fontSizes.xs,
+    color:      colours.textSecondary,
+    marginTop:  spacing.xs,
+    marginLeft: spacing.md,
   },
   deadline: {
     fontSize:  fontSizes.xs,

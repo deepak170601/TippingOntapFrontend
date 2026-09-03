@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, ActivityIndicator,
+  StatusBar, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useAuthContext } from '../../context/AuthContext';
 import {
@@ -82,7 +82,14 @@ const OnboardingScreen = (): React.JSX.Element => {
       </View>
 
       {/* ── Main content ────────────────────────────────── */}
-      <View style={styles.body}>
+      {/* Scrolls. This was a plain View, so on a small screen — or with a
+          requirements card of any length — the Complete Setup button sat off
+          the bottom with no way to reach it, on the one screen a merchant
+          cannot navigate away from. */}
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+      >
 
         {/* Icon */}
         <View style={styles.iconCircle}>
@@ -148,7 +155,7 @@ const OnboardingScreen = (): React.JSX.Element => {
           </View>
         ) : null}
 
-      </View>
+      </ScrollView>
 
       {/* ── Having trouble ──────────────────────────────── */}
       {/* This screen is a dead end by design — no back button, no way to skip.
@@ -199,11 +206,14 @@ const styles = StyleSheet.create({
     color:      colours.white,
   },
 
+  // flexGrow, not flex: this is a ScrollView contentContainer now, and flex:1
+  // there caps content at one screen — the very bug this was changed to fix.
   body: {
-    flex:              1,
+    flexGrow:          1,
     alignItems:        'center',
     paddingHorizontal: spacing.xl,
-    paddingTop:        spacing.xxxl,
+    paddingTop:        spacing.xxl,
+    paddingBottom:     spacing.lg,
   },
 
   iconCircle: {
